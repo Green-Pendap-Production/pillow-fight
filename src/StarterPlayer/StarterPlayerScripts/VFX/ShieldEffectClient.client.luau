@@ -285,16 +285,10 @@ local function attachShield(targetPlayer)
 	-- error LAIN yang gak kepikiran di masa depan, attachShield() TETAP
 	-- lanjut sampai return clone (gak berhenti di tengah kayak bug shield-
 	-- nempel-selamanya yang kemarin).
-	-- Di removeShield(), ganti bagian ini:
-	local pulseTween = activePulses[key]
-	if pulseTween then
-		activePulses[key] = nil
-		if pulseTween.conn then
-			pulseTween.conn:Disconnect()
-		end
-		if pulseTween.tween then
-			pulseTween.tween:Cancel()
-		end
+	local key = targetPlayer.UserId
+	local ok, pulse = pcall(startPulse, clone)
+	if ok and pulse then
+		activePulses[key] = pulse
 	end
 
 	return clone

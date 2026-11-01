@@ -185,16 +185,10 @@ syncMatchStateEvent.OnClientEvent:Connect(function(state)
 		mobileGui.Enabled = isPlaying
 	end
 
-	if isPlaying then
-		isFFYLActive = false
-		isStunned = false
-		isAlive = true
-	else
-		-- Jangan simpan state combat lama ketika ronde/match selesai.
-		isFFYLActive = false
-		isStunned = false
-		isAlive = true
-	end
+	-- Reset state combat lama ketika status match berubah
+	isFFYLActive = false
+	isStunned = false
+	isAlive = true
 end)
 
 matchLockEvent.OnClientEvent:Connect(function(locked)

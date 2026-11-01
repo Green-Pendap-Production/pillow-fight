@@ -313,16 +313,14 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		return
 	end
 
-	if input.KeyCode == Enum.KeyCode.Space then
-		registerPress()
-	elseif input.UserInputType == Enum.UserInputType.Touch then
-		-- Touch-down langsung, BUKAN TouchTap. TouchTap nunggu gesture
-		-- penuh (jari nempel -> lepas -> baru dicek valid/enggaknya),
-		-- jadi pas di-mash cepat sebagian sentuhan ke-drop karena gak
-		-- sempat "selesai" jadi tap yang valid sebelum sentuhan
-		-- berikutnya masuk. InputBegan nembak persis pas jari nyentuh
-		-- layar, gak ada gesture yang perlu ditunggu -> gak ada tap
-		-- yang hilang walau di-mash secepat apapun.
+	-- Touch-down langsung, BUKAN TouchTap. TouchTap nunggu gesture
+	-- penuh (jari nempel -> lepas -> baru dicek valid/enggaknya),
+	-- jadi pas di-mash cepat sebagian sentuhan ke-drop karena gak
+	-- sempat "selesai" jadi tap yang valid sebelum sentuhan
+	-- berikutnya masuk. InputBegan nembak persis pas jari nyentuh
+	-- layar, gak ada gesture yang perlu ditunggu -> gak ada tap
+	-- yang hilang walau di-mash secepat apapun.
+	if input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.Touch then
 		registerPress()
 	end
 end)
