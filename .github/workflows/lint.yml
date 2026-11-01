@@ -1,0 +1,28 @@
+name: Lint & Format Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Selene & StyLua
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rokit toolchain
+        uses: paradoxum-games/setup-rokit@v3
+        with:
+          cache: true
+
+      - name: Verify StyLua Formatting
+        run: stylua --check src
+
+      - name: Run Selene Linter
+        run: selene src
