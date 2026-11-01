@@ -1,0 +1,21 @@
+# Roblox Place files
+*.rbxl
+*.rbxlx
+
+# Roblox Studio lock files
+*.rbxlx.lock
+*.rbxl.lock
+
+# Rojo / Tooling artifacts
+sourcemap.json
+.rojo/
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Project-specific ignored folders
+ui/
+docs/
+skills/

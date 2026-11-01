@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/main/scripts/luau-lsp.schema.json",
+  "types": {
+    "definitionFiles": ["globalTypes.d.luau"]
+  },
+  "roblox": {
+    "enabled": true
+  },
+  "completion": {
+    "imports": {
+      "enabled": false,
+      "suggestServices": false
+    },
+    "autocompleteEnd": true
+  },
+  "plugin": {
+    "enabled": true,
+    "port": 3667
+  }
+}
