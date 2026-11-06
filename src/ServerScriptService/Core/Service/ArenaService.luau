@@ -1,12 +1,6 @@
+-- @ScriptType: ModuleScript
 local BotAnimationService
--- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
+
 --[[
     Nama File  : ArenaService.lua
     Layer      : Service
@@ -586,6 +580,10 @@ local function unequipPillow(players)
 		end
 	end
 end
+
+-- Dipakai LobbyPvPService buat masang bantal pas PvP lobby nyala (termasuk
+-- fallback clone ulang dari StarterPack kalau bantalnya hilang).
+ArenaService.equipPillow = equipPillow
 
 local function resetPlayerStats(players)
 	for index, player in ipairs(players) do

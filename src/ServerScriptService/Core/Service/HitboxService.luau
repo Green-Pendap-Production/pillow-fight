@@ -1,5 +1,6 @@
 -- @ScriptType: ModuleScript
 -- @ScriptType: ModuleScript
+-- @ScriptType: ModuleScript
 --[[
     Nama File  : HitboxService.lua
     Layer      : Service
@@ -12,28 +13,24 @@
 local HitboxService = {}
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local Debris = game:GetService("Debris")
+local RunService        = game:GetService("RunService")
+local Workspace         = game:GetService("Workspace")
+local Debris            = game:GetService("Debris")
 
-local HitboxConfig = require(ReplicatedStorage.Configs.HitboxConfig)
-local GameplayConfig = require(ReplicatedStorage.Configs.GameplayConfig)
+local HitboxConfig    = require(ReplicatedStorage.Configs.HitboxConfig)
+local GameplayConfig  = require(ReplicatedStorage.Configs.GameplayConfig)
 local AnimationConfig = require(ReplicatedStorage.Configs.AnimationConfig)
 
 -- Cari part bantal yang sedang dipegang karakter.
 local function getPillowPart(character)
-	if not character then
-		return nil
-	end
+	if not character then return nil end
 
 	local tool = character:FindFirstChild(GameplayConfig.PILLOW_TOOL_NAME)
 	if not (tool and tool:IsA("Tool")) then
 		-- Nama Tool bisa saja berbeda di Studio; ambil Tool apa pun yang dipegang.
 		tool = character:FindFirstChildOfClass("Tool")
 	end
-	if not tool then
-		return nil
-	end
+	if not tool then return nil end
 
 	local named = tool:FindFirstChild(HitboxConfig.PILLOW_HITBOX_NAME)
 	if named and named:IsA("BasePart") then
@@ -89,9 +86,7 @@ end
 -- Tentukan arah datangnya pukulan untuk memilih variant hurt.
 local function resolveSide(victimCharacter, hitPosition)
 	local root = victimCharacter:FindFirstChild("HumanoidRootPart")
-	if not root then
-		return nil
-	end
+	if not root then return nil end
 
 	local relative = root.CFrame:PointToObjectSpace(hitPosition)
 	if math.abs(relative.X) < HitboxConfig.SIDE_DEADZONE then
@@ -105,9 +100,7 @@ end
 local debugFolder
 
 local function drawDebugBox(cframe, size, isHit)
-	if not HitboxConfig.DEBUG then
-		return
-	end
+	if not HitboxConfig.DEBUG then return end
 
 	if not debugFolder or not debugFolder.Parent then
 		debugFolder = Instance.new("Folder")
@@ -116,16 +109,16 @@ local function drawDebugBox(cframe, size, isHit)
 	end
 
 	local box = Instance.new("Part")
-	box.Size = size
-	box.CFrame = cframe
-	box.Anchored = true
-	box.CanCollide = false
-	box.CanQuery = false
-	box.CanTouch = false
+	box.Size         = size
+	box.CFrame       = cframe
+	box.Anchored     = true
+	box.CanCollide   = false
+	box.CanQuery     = false
+	box.CanTouch     = false
 	box.Transparency = 0.7
-	box.Material = Enum.Material.Neon
-	box.Color = isHit and Color3.fromRGB(80, 255, 120) or Color3.fromRGB(255, 90, 90)
-	box.Parent = debugFolder
+	box.Material     = Enum.Material.Neon
+	box.Color        = isHit and Color3.fromRGB(80, 255, 120) or Color3.fromRGB(255, 90, 90)
+	box.Parent       = debugFolder
 
 	Debris:AddItem(box, HitboxConfig.DEBUG_LIFETIME)
 end
@@ -139,16 +132,12 @@ function HitboxService.strike(attacker, victim, actionType)
 	end
 
 	local attackerCharacter = attacker.Character
-	local victimCharacter = victim.Character
-	if not (attackerCharacter and victimCharacter) then
-		return nil
-	end
+	local victimCharacter   = victim.Character
+	if not (attackerCharacter and victimCharacter) then return nil end
 
 	-- Animasi yang diputar lebih cepat berarti frame kontaknya datang lebih awal.
 	local speed = AnimationConfig.SPEED[actionType] or 1
-	if speed <= 0 then
-		speed = 1
-	end
+	if speed <= 0 then speed = 1 end
 
 	-- FIX (damage kadang gak masuk cuma pas live, aman di Studio test):
 	-- `now` di sini itu waktu SERVER nerima AttackFiredEvent, yang udah
@@ -162,9 +151,9 @@ function HitboxService.strike(attacker, victim, actionType)
 	-- baru mulai dicek, padahal attacker udah lihat kontak "kena"
 	-- secara visual. Makanya dipakai SETENGAH (one-way) bukan full RTT.
 	local networkDelay = getPing(attacker) * 0.5
-	local now = os.clock()
-	local startAt = now + (window.start / speed) + networkDelay
-	local stopAt = now + (window.stop / speed) + networkDelay + HitboxConfig.LATENCY_GRACE
+	local now          = os.clock()
+	local startAt      = now + (window.start / speed) + networkDelay
+	local stopAt       = now + (window.stop  / speed) + networkDelay + HitboxConfig.LATENCY_GRACE
 
 	if HitboxConfig.DEBUG_LOG then
 		-- TAMBAH: jarak STATIS root-ke-root saat ayunan dimulai (bukan jarak
@@ -177,20 +166,12 @@ function HitboxService.strike(attacker, victim, actionType)
 		local attackerRoot = attackerCharacter:FindFirstChild("HumanoidRootPart")
 		local victimRootAtStart = victimCharacter:FindFirstChild("HumanoidRootPart")
 		local rootToRoot = (attackerRoot and victimRootAtStart)
-				and (attackerRoot.Position - victimRootAtStart.Position).Magnitude
+			and (attackerRoot.Position - victimRootAtStart.Position).Magnitude
 			or nil
 
-		print(
-			("[HitboxDebug] SWING attacker=%s action=%s speed=%.2f ping=%.3f window=%.2f-%.2f rootToRoot=%s"):format(
-				attacker.Name,
-				actionType,
-				speed,
-				networkDelay,
-				window.start,
-				window.stop,
-				rootToRoot and string.format("%.2f", rootToRoot) or "nil"
-			)
-		)
+		print(("[HitboxDebug] SWING attacker=%s action=%s speed=%.2f ping=%.3f window=%.2f-%.2f rootToRoot=%s")
+			:format(attacker.Name, actionType, speed, networkDelay, window.start, window.stop,
+				rootToRoot and string.format("%.2f", rootToRoot) or "nil"))
 	end
 
 	-- ── Fase 1: tunggu sampai bantal mulai melintas ──
@@ -200,10 +181,10 @@ function HitboxService.strike(attacker, victim, actionType)
 
 	local params = buildOverlapParams(victimCharacter)
 
-	local framesChecked = 0
-	local framesInRange = 0
-	local framesNoPillow = 0
-	local closestMiss = nil -- jarak cframe-ke-victimRoot terdekat yang tetap tidak ada touched part
+	local framesChecked   = 0
+	local framesInRange   = 0
+	local framesNoPillow  = 0
+	local closestMiss     = nil -- jarak cframe-ke-victimRoot terdekat yang tetap tidak ada touched part
 
 	-- ── Fase 2: periksa tabrakan tiap frame selama jendela aktif ──
 	while os.clock() < stopAt do
@@ -217,12 +198,8 @@ function HitboxService.strike(attacker, victim, actionType)
 		if not pillowPart then
 			framesNoPillow += 1
 			if HitboxConfig.FALLBACK_WHEN_NO_PILLOW then
-				warn(
-					"[HitboxService] Bantal "
-						.. attacker.Name
-						.. " tidak ditemukan;"
-						.. " pukulan dihitung mendarat tanpa deteksi tabrakan."
-				)
+				warn("[HitboxService] Bantal " .. attacker.Name .. " tidak ditemukan;"
+					.. " pukulan dihitung mendarat tanpa deteksi tabrakan.")
 				return { part = nil, position = nil, side = nil, fallback = true }
 			end
 			return nil
@@ -251,14 +228,8 @@ function HitboxService.strike(attacker, victim, actionType)
 
 			if hitPart then
 				if HitboxConfig.DEBUG_LOG then
-					print(
-						("[HitboxDebug] HIT attacker=%s framesChecked=%d framesInRange=%d framesNoPillow=%d"):format(
-							attacker.Name,
-							framesChecked,
-							framesInRange,
-							framesNoPillow
-						)
-					)
+					print(("[HitboxDebug] HIT attacker=%s framesChecked=%d framesInRange=%d framesNoPillow=%d")
+						:format(attacker.Name, framesChecked, framesInRange, framesNoPillow))
 				end
 
 				drawDebugBox(cframe, size, true)
@@ -268,9 +239,9 @@ function HitboxService.strike(attacker, victim, actionType)
 				-- bisa membedakan kanan/kiri, sedangkan bantal jelas berada di
 				-- salah satu sisi.
 				return {
-					part = hitPart,
+					part     = hitPart,
 					position = cframe.Position,
-					side = resolveSide(victimCharacter, cframe.Position),
+					side     = resolveSide(victimCharacter, cframe.Position),
 					fallback = false,
 				}
 			end
@@ -284,36 +255,90 @@ function HitboxService.strike(attacker, victim, actionType)
 	-- Jendela aktif habis tanpa sentuhan — pukulan meleset.
 	if HitboxConfig.DEBUG_LOG then
 		if framesChecked == 0 then
-			print(
-				("[HitboxDebug] MISS attacker=%s action=%s -- BANTAL TIDAK PERNAH KETEMU selama jendela aktif (framesNoPillow=%d)"):format(
-					attacker.Name,
-					actionType,
-					framesNoPillow
-				)
-			)
+			print(("[HitboxDebug] MISS attacker=%s action=%s -- BANTAL TIDAK PERNAH KETEMU selama jendela aktif (framesNoPillow=%d)")
+				:format(attacker.Name, actionType, framesNoPillow))
 		elseif framesInRange == 0 then
 			local lastDist = closestMiss and closestMiss.distance
-			print(
-				("[HitboxDebug] MISS attacker=%s action=%s -- bantal ketemu (%d frame) tapi TIDAK PERNAH masuk MAX_RANGE (%.1f). Jarak terakhir ke victimRoot=%s"):format(
-					attacker.Name,
-					actionType,
-					framesChecked,
-					HitboxConfig.MAX_RANGE,
-					tostring(lastDist)
-				)
-			)
+			print(("[HitboxDebug] MISS attacker=%s action=%s -- bantal ketemu (%d frame) tapi TIDAK PERNAH masuk MAX_RANGE (%.1f). Jarak terakhir ke victimRoot=%s")
+				:format(attacker.Name, actionType, framesChecked, HitboxConfig.MAX_RANGE, tostring(lastDist)))
 		else
-			print(
-				("[HitboxDebug] MISS attacker=%s action=%s -- masuk range %d/%d frame tapi GetPartBoundsInBox gak pernah nemu part victim (closest touchedCount=%s @ dist=%.2f)"):format(
-					attacker.Name,
-					actionType,
-					framesInRange,
-					framesChecked,
-					tostring(closestMiss and closestMiss.touchedCount),
-					closestMiss and closestMiss.distance or -1
-				)
-			)
+			print(("[HitboxDebug] MISS attacker=%s action=%s -- masuk range %d/%d frame tapi GetPartBoundsInBox gak pernah nemu part victim (closest touchedCount=%s @ dist=%.2f)")
+				:format(attacker.Name, actionType, framesInRange, framesChecked,
+					tostring(closestMiss and closestMiss.touchedCount), closestMiss and closestMiss.distance or -1))
 		end
+	end
+
+	return nil
+end
+
+-- Varian strike untuk PvP lobby: tidak ada lawan tetap, jadi tiap frame
+-- jendela aktif bantal dicek terhadap SEMUA karakter yang boleh dipukul.
+-- getTargets() dipanggil ulang tiap frame (pemain bisa matiin PvP / masuk
+-- antrean di tengah ayunan), mengembalikan { [character] = player }.
+-- Tidak ada FALLBACK_WHEN_NO_PILLOW di sini: tanpa bantal di lobby, ayunan
+-- cukup meleset -- gak ada match yang bisa nge-hang.
+function HitboxService.strikeAny(attacker, actionType, getTargets)
+	local window = HitboxConfig.ACTIVE_WINDOW[actionType]
+	if not window then return nil end
+
+	local attackerCharacter = attacker.Character
+	if not attackerCharacter then return nil end
+
+	local speed = AnimationConfig.SPEED[actionType] or 1
+	if speed <= 0 then speed = 1 end
+
+	local networkDelay = getPing(attacker) * 0.5
+	local now          = os.clock()
+	local startAt      = now + (window.start / speed) + networkDelay
+	local stopAt       = now + (window.stop  / speed) + networkDelay + HitboxConfig.LATENCY_GRACE
+
+	while os.clock() < startAt do
+		RunService.Heartbeat:Wait()
+	end
+
+	while os.clock() < stopAt do
+		if attacker.Character ~= attackerCharacter then return nil end
+
+		local pillowPart = getPillowPart(attackerCharacter)
+		if not pillowPart then return nil end
+
+		local size = HitboxConfig.SIZE_OVERRIDE or (pillowPart.Size + HitboxConfig.SIZE_PADDING)
+		local cframe = pillowPart.CFrame * CFrame.new(HitboxConfig.OFFSET)
+
+		local targets = getTargets()
+		local characters = {}
+		for character in pairs(targets) do
+			local root = character:FindFirstChild("HumanoidRootPart")
+			if root and (cframe.Position - root.Position).Magnitude <= HitboxConfig.MAX_RANGE then
+				table.insert(characters, character)
+			end
+		end
+
+		if #characters > 0 then
+			local params = OverlapParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			params.FilterDescendantsInstances = characters
+			params.RespectCanCollide = false
+
+			local hitPart = pickHitPart(Workspace:GetPartBoundsInBox(cframe, size, params), cframe.Position)
+			if hitPart then
+				for _, character in ipairs(characters) do
+					if hitPart:IsDescendantOf(character) then
+						drawDebugBox(cframe, size, true)
+						return targets[character], {
+							part     = hitPart,
+							position = cframe.Position,
+							side     = resolveSide(character, cframe.Position),
+							fallback = false,
+						}
+					end
+				end
+			end
+
+			drawDebugBox(cframe, size, false)
+		end
+
+		RunService.Heartbeat:Wait()
 	end
 
 	return nil

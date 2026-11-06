@@ -14,6 +14,7 @@ local PunishmentService = require(Services.PunishmentService) -- Anti-GB Layer 2
 local StreakDisplayService = require(Services.StreakDisplayService) -- DITAMBAHKAN: badge win streak gak pernah ke-init
 local CoinService = require(Services.CoinService)
 local TutorialBattleService = require(Services.TutorialBattleService)
+local LobbyPvPService = require(Services.LobbyPvPService)
 
 local PlayerStateRepository = require(Core.Repository.PlayerStateRepository)
 
@@ -40,6 +41,10 @@ if StreakDisplayService.init then
 end -- WAJIB: tanpa ini, badge gak pernah dipasang ulang pas character respawn, dan updateStreak() pas player baru join (sebelum character spawn) gak ada yang nge-reapply dari cache
 if TutorialBattleService.init then
 	TutorialBattleService.init()
+end
+
+if LobbyPvPService.init then
+	LobbyPvPService.init()
 end
 
 -- INIT CONTROLLERS
