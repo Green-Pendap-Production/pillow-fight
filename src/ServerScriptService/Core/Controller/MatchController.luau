@@ -1,130 +1,173 @@
 -- @ScriptType: ModuleScript
--- @ScriptType: ModuleScript
 --[[
-	Nama File : PlayerStateRepository
-	Layer : Repository
-	Deskripsi :
-	Penulis : Rifqi RR
-			  Yusuf Ahayy (Energy Ahayy)
-			  Abdul Vaiz (isPlaying)
-	Tanggal : 23 Juni 2026
-	Diubah : 2 Juli 2026
-	Versi : 2.0
-	Dependensi :	- BalanceConfig
+	Nama File : MatchController
+	Layer     : Controller (ServerScriptService/Core/Controller)
+	Deskripsi : Menyambungkan pad teleporter arena di lobby
+	            (Workspace.World.Environment.PillowArena.<ArenaTeleporterN>.Teleporter)
+	            ke MatchmakingService. Begitu karakter pemain nginjek pad,
+	            pemain dimasukkan ke antrean arena tsb -- countdown, kunci
+	            gerakan, tombol "LAWAN BOT", auto-bot, dan batal lewat Jump
+	            semuanya ditangani MatchmakingService.
+	Catatan   : File ini sebelumnya ketimpa isi PlayerStateRepository, jadi
+	            MatchController.init() malah manggil PlayerStateRepository.init(nil)
+	            dan crash "attempt to index nil with 'UserId'" -- akibatnya pad
+	            teleporter mati total (gak ada countdown, gak ada tombol).
+	Dependensi: MatchmakingService, PlayerStateRepository, ArenaService, BotService
 ]]
 
-local PlayerStateRepository = {}
-local _state = {}
+local MatchController = {}
 
-local BalanceConfig = require(game:GetService("ReplicatedStorage").Configs.BalanceConfig)
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ServerScriptService = game:GetService("ServerScriptService")
 
--- EnergyConfig di-require secara lazy di dalam init() untuk menghindari
--- recursive require: EnergyService → PlayerStateRepository → EnergyConfig
--- sementara EnergyService sendiri juga membutuhkan EnergyConfig.
-local EnergyConfig
+local Core = ServerScriptService.Core
+local PlayerStateRepository = require(Core.Repository.PlayerStateRepository)
+local MatchmakingService = require(Core.Service.MatchmakingService)
 
--- player == game.Players.PlayerAdded dan seterusnya
-function PlayerStateRepository.init(player)
-	-- Lazy load EnergyConfig saat pertama kali dibutuhkan
-	if not EnergyConfig then
-		EnergyConfig = require(game:GetService("ReplicatedStorage").Configs.EnergyConfig)
-	end
+local ArenaService -- lazy (hindari circular require)
 
-	local playerId = player.UserId
+local WAIT_TIMEOUT = 10
 
-	_state[playerId] = {
-		-- data player
+-- Setelah keluar antrean (Jump-cancel), pemain biasanya mendarat lagi di
+-- pad yang sama -> Touched nembak lagi -> langsung ke-queue ulang & gak
+-- bisa keluar. Jeda ini mencegah itu. Saat match mulai, jeda ini juga
+-- ke-set, tapi sudah lama habis begitu match selesai.
+local REQUEUE_COOLDOWN = 3
+local WATCH_INTERVAL = 0.25
 
-		--Balance (Rifziq Reis)
-		balance = BalanceConfig.MAX_BALANCE,
-		isAlive = true,
-		isFFYL = false, -- Mode FFYL
-		ffylSurvivalCount = 0, -- Berapa kali pemain berhasil menang FFYL (per ronde)
+local registeredTeleporters = {} -- [BasePart] = true
+local pendingJoin = {} -- [Player] = true selagi addPlayerToQueue lagi diproses
+local requeueBlockedUntil = {} -- [Player] = os.clock()
 
-		-- Timestamp (os.clock) sampai kapan pemain immune dari damage
-		-- setelah berhasil menang minigame FFYL. Diisi BalanceService.recoverFFYL,
-		-- dicek di BalanceService.applyDamage. 0 = tidak sedang immune.
-		ffylImmuneUntil = 0,
-
-		-- Energy (Energy Ahayy Yusud Ahayy)
-		energy = EnergyConfig.MAX_ENERGY,
-		isStun = false, -- <---Ditaruh koma di akhir biar kalau ada yang ngebuat dia bawah gak ada error
-
-		-- Matchmaking Teleporter (Epik)
-		isInMatchmaking = false,
-		isPlaying = false,
-		cooldowns = {},
-
-		-- Combo (dipakai ComboService)
-		comboCount = 0,
-		lastComboTime = 0,
-
-		-- Timestamp (os.clock) sampai kapan pemain ini tidak boleh menyerang.
-		-- Diisi CombatController dari dua sumber: flinch setelah kena pukul
-		-- (durasinya per jenis pukulan, GameplayConfig.FLINCH) dan stagger
-		-- setelah serangannya kena PERFECT DODGE lawan
-		-- (GameplayConfig.PERFECT_DODGE_PUNISH). Dodge selalu dikecualikan,
-		-- jadi ini tidak pernah mengunci pemain tanpa jalan keluar.
-		-- Direset ArenaService.resetPlayerStats tiap ronde baru.
-		flinchUntil = 0,
-
-		-- Anti-AFK Layer 1 (dipakai ArenaService): waktu terakhir kali pemain
-		-- melakukan action (light/heavy/dodge). Karakter duduk terus selama
-		-- match, jadi ini TIDAK termasuk movement/lompat.
-		lastActionTime = os.clock(),
-
-		-- Anti-GB Layer 2 (dipakai ArenaService): jumlah action dalam
-		-- rolling window saat ini. Diincrement CombatController tiap action
-		-- sukses, direset ArenaService tiap window (GB_WINDOW_DURATION) habis.
-		windowActionCount = 0,
-
-		-- Anti-Farming Layer 3 (dipakai RepeatOpponentService): UserId lawan
-		-- di match TERAKHIR yang beneran selesai (win/loss) untuk pemain ini.
-		-- 0 = belum pernah main match yang selesai di sesi ini. Dipakai untuk
-		-- mendeteksi selingan lawan lain di antara 2 match melawan pasangan
-		-- yang sama (streak farming wajib beruntun tanpa selingan).
-		lastMatchOpponentUserId = 0,
-		sessionWins = 0,
-		sessionPlayTime = 0,
-
-		coins = 0,
-		sessionCoinsDelta = 0,
-	}
-
-	print("[PlayerStateRepository] ID Player" .. player.Name .. " : " .. playerId)
-end
-
--- function get -> mengembalikan nilai dari key yang diinput (atribut player)
-function PlayerStateRepository.get(player)
-	if not player then
-		warn("[PlayerStateRepository] Fungsi get() dipanggil tapi parameter player nil!")
+local function getPlayerFromHit(hit)
+	local character = hit and hit.Parent
+	if not character then
 		return nil
 	end
-
-	local playerId = player.UserId
-
-	return _state[player.UserId]
-end
-
--- function set -> mengubah nilai dari key yang diinput (atribut player)
-function PlayerStateRepository.set(player, key, value)
+	local player = Players:GetPlayerFromCharacter(character)
 	if not player then
-		warn("[PlayerStateRepository] Fungsi set() dipanggil tapi parameter player nil!")
+		return nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return nil
+	end
+	return player
+end
+
+local function canJoinQueue(player)
+	if pendingJoin[player] then
+		return false
+	end
+	if os.clock() < (requeueBlockedUntil[player] or 0) then
+		return false
+	end
+
+	local state = PlayerStateRepository.get(player)
+	if not state then
+		return false -- data belum ke-load
+	end
+	if state.isPlaying or state.isInMatchmaking then
+		return false
+	end
+
+	ArenaService = ArenaService or require(Core.Service.ArenaService)
+	if ArenaService.getOpponent and ArenaService.getOpponent(player) ~= nil then
+		return false
+	end
+
+	return true
+end
+
+-- Pantau sampai pemain keluar antrean (Jump / mati / match mulai), lalu
+-- pasang jeda requeue.
+local function watchQueueExit(player)
+	task.spawn(function()
+		while player.Parent do
+			local state = PlayerStateRepository.get(player)
+			if not state or not state.isInMatchmaking then
+				break
+			end
+			task.wait(WATCH_INTERVAL)
+		end
+		requeueBlockedUntil[player] = os.clock() + REQUEUE_COOLDOWN
+	end)
+end
+
+local function onTeleporterTouched(arenaTeleporterName, hit)
+	local player = getPlayerFromHit(hit)
+	if not player or not canJoinQueue(player) then
 		return
 	end
 
-	if not _state[player.UserId] then
+	-- addPlayerToQueue bisa yield (cek cooldown farming via DataStore), jadi
+	-- jalankan di thread sendiri & guard supaya belasan Touched dari tiap
+	-- BasePart karakter gak bikin request dobel.
+	pendingJoin[player] = true
+	task.spawn(function()
+		local ok, err = pcall(MatchmakingService.addPlayerToQueue, player, arenaTeleporterName)
+		pendingJoin[player] = nil
+
+		if not ok then
+			warn("[MatchController] addPlayerToQueue gagal untuk " .. player.Name .. ": " .. tostring(err))
+			return
+		end
+
+		local state = PlayerStateRepository.get(player)
+		if state and state.isInMatchmaking then
+			watchQueueExit(player)
+		end
+	end)
+end
+
+local function registerArenaTeleporter(arenaFolder)
+	if not arenaFolder:IsA("Folder") and not arenaFolder:IsA("Model") then
 		return
 	end
-	_state[player.UserId][key] = value
+
+	task.spawn(function()
+		local teleporter = arenaFolder:WaitForChild("Teleporter", WAIT_TIMEOUT)
+		if not teleporter or not teleporter:IsA("BasePart") or registeredTeleporters[teleporter] then
+			return
+		end
+		registeredTeleporters[teleporter] = true
+
+		local arenaTeleporterName = arenaFolder.Name
+		teleporter.Touched:Connect(function(hit)
+			onTeleporterTouched(arenaTeleporterName, hit)
+		end)
+
+		teleporter.Destroying:Connect(function()
+			registeredTeleporters[teleporter] = nil
+		end)
+	end)
 end
 
-function PlayerStateRepository.remove(player)
-	local playerId = player.UserId
-	if _state[playerId] then
-		_state[playerId] = nil
-		print("[PlayerStateRepository] Data Player " .. player.Name .. " dihapus")
-	end
+function MatchController.init()
+	Players.PlayerRemoving:Connect(function(player)
+		pendingJoin[player] = nil
+		requeueBlockedUntil[player] = nil
+	end)
+
+	task.spawn(function()
+		local world = Workspace:WaitForChild("World", WAIT_TIMEOUT)
+		local env = world and world:WaitForChild("Environment", WAIT_TIMEOUT)
+		local pillowArena = env and env:WaitForChild("PillowArena", WAIT_TIMEOUT)
+		if not pillowArena then
+			warn(
+				"[MatchController] Workspace.World.Environment.PillowArena tidak ditemukan -- pad teleporter tidak aktif."
+			)
+			return
+		end
+
+		pillowArena.ChildAdded:Connect(registerArenaTeleporter)
+		for _, child in ipairs(pillowArena:GetChildren()) do
+			registerArenaTeleporter(child)
+		end
+
+		print("[MatchController] Pad teleporter arena aktif.")
+	end)
 end
 
-return PlayerStateRepository
+return MatchController
