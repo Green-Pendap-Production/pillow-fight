@@ -478,6 +478,7 @@ player.CharacterAdded:Connect(function(newCharacter)
 	lightAnimIndex = 1
 	hurtAnimIndex = 1
 	isInFFYL = false
+	isStunned = false
 
 	preloadAllAnimations()
 	loadAnimationSet(AnimationConfig.COMBAT_ANIMATIONS, Enum.AnimationPriority.Action)

@@ -53,6 +53,17 @@ local isAlive = true -- false saat kalah (defeat)
 -- baru terkunci setelah "FIGHT!" ditembak.
 local isLocked = false
 
+-- PvP lobby aktif? Attribute ini diset SERVER (LobbyPvPService): true kalau
+-- toggle PvP ON dan pemain lagi bebas di lobby (bukan match/pad/tutorial).
+local function isLobbyPvPActive()
+	if LocalPlayer:GetAttribute("LobbyPvPActive") ~= true then
+		return false
+	end
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	return humanoid ~= nil and humanoid.Health > 0
+end
+
 -- Gerbang utama input client
 local function canAct()
 	-- Hard gate: isPlaying hanya berarti ronde sedang aktif. isLocked
@@ -63,7 +74,14 @@ local function canAct()
 	-- sepanjang SELURUH match, sedangkan isPlaying menjadi true saat FIGHT
 	-- dan tetap true antar ronde. Kalau isLocked ikut dicek di sini,
 	-- player tidak akan pernah bisa light/heavy/dodge selama match.
-	return isPlaying and isAlive and not isFFYLActive and not isStunned
+	if isPlaying then
+		return isAlive and not isFFYLActive and not isStunned
+	end
+
+	-- Di luar match: cuma boleh kalau PvP lobby aktif. State match
+	-- (FFYL/stun/defeat) sengaja gak dicek -- itu gak berlaku di lobby,
+	-- dan nilainya bisa nyangkut dari match terakhir.
+	return isLobbyPvPActive()
 end
 
 local lastUsed = {
@@ -126,6 +144,16 @@ if isMobile then
 	setupMobileButtons()
 end
 
+-- Tombol mobile tampil selama ronde match ATAU selama PvP lobby aktif.
+local function refreshMobileGui()
+	if isMobile and mobileGui then
+		mobileGui.Enabled = isPlaying or LocalPlayer:GetAttribute("LobbyPvPActive") == true
+	end
+end
+
+LocalPlayer:GetAttributeChangedSignal("LobbyPvPActive"):Connect(refreshMobileGui)
+refreshMobileGui()
+
 -- ================================================================
 -- SYSTEM & GUI HELPERS
 -- ================================================================
@@ -181,9 +209,7 @@ end)
 -- ================================================================
 syncMatchStateEvent.OnClientEvent:Connect(function(state)
 	isPlaying = state
-	if isMobile and mobileGui then
-		mobileGui.Enabled = isPlaying
-	end
+	refreshMobileGui()
 
 	-- Reset state combat lama ketika status match berubah
 	isFFYLActive = false

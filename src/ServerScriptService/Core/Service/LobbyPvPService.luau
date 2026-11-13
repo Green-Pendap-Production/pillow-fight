@@ -4,9 +4,11 @@
     Layer      : Service
     Deskripsi  : PvP bebas di lobby (opt-in lewat toggle Settings > PvpPanel).
                  Pemain yang PvP-nya ON bisa saling pukul bantal di luar match:
-                 tanpa balance/energi/ronde -- kena pukul cuma bikin animasi
-                 hurt + knockback. Pemain yang PvP-nya OFF gak bisa mukul dan
-                 gak bisa dipukul.
+                 tanpa balance/energi/ronde -- kena pukul bikin animasi hurt,
+                 knockback, dan ngurangin Humanoid.Health (HP 0 = mati lalu
+                 respawn; ForceField habis spawn = kebal). HP dipulihin penuh
+                 begitu PvP lobby nonaktif. Pemain yang PvP-nya OFF gak bisa
+                 mukul dan gak bisa dipukul.
 
                  Status di-replicate ke client lewat attribute Player (diset
                  SERVER, jadi kebaca semua client):
@@ -62,6 +64,13 @@ local CONFIG = {
 	KNOCKBACK = {
 		light = { horizontal = 30, vertical = 10, duration = 0.15 },
 		heavy = { horizontal = 60, vertical = 28, duration = 0.2 },
+	},
+
+	-- Damage ke Humanoid.Health (MaxHealth default 100). HP 0 = mati &
+	-- respawn biasa (Players.RespawnTime). Regen bawaan Roblox tetap jalan.
+	DAMAGE = {
+		light = 10,
+		heavy = 20,
 	},
 
 	-- Tag "PVP" di atas kepala, di atas badge win streak (StudsOffset 3).
@@ -216,6 +225,15 @@ local function update(player)
 		ensurePillowEquipped(player)
 		addTag(character)
 	else
+		-- Keluar dari PvP lobby (toggle OFF, masuk pad/match) dalam kondisi
+		-- masih hidup: HP dipulihin penuh, biar luka dari lobby gak kebawa.
+		if s.active then
+			local humanoid = getAliveHumanoid(player)
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+		end
+
 		-- Bantal cuma disimpan kalau PvP-nya dimatiin di lobby. Kalau
 		-- nonaktifnya gara-gara masuk match/antrean, ArenaService yang
 		-- ngatur bantalnya sendiri.
@@ -278,6 +296,32 @@ local function applyKnockback(attacker, victim, actionType)
 end
 
 -- ================================================================
+-- DAMAGE
+-- ================================================================
+-- Kurangi HP korban. Tag "creator" (ObjectValue -> penyerang) = konvensi
+-- standar Roblox buat nyatet siapa yang nge-KO, kalau nanti mau dipakai
+-- buat kill feed / leaderstats.
+local function applyDamage(attacker, victim, actionType)
+	local humanoid = getAliveHumanoid(victim)
+	local damage = CONFIG.DAMAGE[actionType]
+	if not (humanoid and damage) then
+		return
+	end
+
+	local old = humanoid:FindFirstChild("creator")
+	if old then
+		old:Destroy()
+	end
+	local creator = Instance.new("ObjectValue")
+	creator.Name = "creator"
+	creator.Value = attacker
+	creator.Parent = humanoid
+	Debris:AddItem(creator, 2)
+
+	humanoid:TakeDamage(damage)
+end
+
+-- ================================================================
 -- COMBAT
 -- ================================================================
 local function getTargets(attacker)
@@ -300,6 +344,12 @@ local function resolveHit(attacker, victim, actionType, contact, swingToken)
 		return
 	end -- kepotong ayunan baru
 	if not (LobbyPvPService.isActive(attacker) and LobbyPvPService.isActive(victim)) then
+		return
+	end
+
+	-- Spawn protection: korban yang masih punya ForceField (habis respawn)
+	-- kebal total -- gak ada damage, animasi hurt, maupun knockback.
+	if victim.Character and victim.Character:FindFirstChildOfClass("ForceField") then
 		return
 	end
 
@@ -334,6 +384,7 @@ local function resolveHit(attacker, victim, actionType, contact, swingToken)
 
 	applyKnockback(attacker, victim, actionType)
 	VFXService.spawnHitEffect(contact and contact.position, actionType)
+	applyDamage(attacker, victim, actionType)
 end
 
 local function startSwing(attacker, actionType)
