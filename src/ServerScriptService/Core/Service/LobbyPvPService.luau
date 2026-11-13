@@ -113,8 +113,12 @@ end
 -- pad antrean.
 local function isBusy(player)
 	local state = PlayerStateRepository.get(player)
-	if not state then return true end
-	if state.isPlaying or state.isInMatchmaking then return true end
+	if not state then
+		return true
+	end
+	if state.isPlaying or state.isInMatchmaking then
+		return true
+	end
 
 	ArenaService = ArenaService or require(ServerScriptService.Core.Service.ArenaService)
 	return ArenaService.getOpponent(player) ~= nil
@@ -137,7 +141,9 @@ end
 -- ================================================================
 local function addTag(character)
 	local head = character and character:FindFirstChild("Head")
-	if not head or head:FindFirstChild(TAG_NAME) then return end
+	if not head or head:FindFirstChild(TAG_NAME) then
+		return
+	end
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = TAG_NAME
@@ -199,7 +205,9 @@ end
 -- ================================================================
 local function update(player)
 	local s = sessions[player]
-	if not s then return end
+	if not s then
+		return
+	end
 
 	local active = computeActive(player)
 	local character = player.Character
@@ -237,7 +245,9 @@ local function applyKnockback(attacker, victim, actionType)
 	local kb = CONFIG.KNOCKBACK[actionType]
 	local attackerRoot = attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart")
 	local victimRoot = victim.Character and victim.Character:FindFirstChild("HumanoidRootPart")
-	if not (kb and attackerRoot and victimRoot) then return end
+	if not (kb and attackerRoot and victimRoot) then
+		return
+	end
 
 	local offset = victimRoot.Position - attackerRoot.Position
 	local direction = Vector3.new(offset.X, 0, offset.Z)
@@ -283,9 +293,15 @@ end
 local function resolveHit(attacker, victim, actionType, contact, swingToken)
 	local attackerSession = sessions[attacker]
 	local victimSession = sessions[victim]
-	if not (attackerSession and victimSession) then return end
-	if attackerSession.swingId ~= swingToken then return end -- kepotong ayunan baru
-	if not (LobbyPvPService.isActive(attacker) and LobbyPvPService.isActive(victim)) then return end
+	if not (attackerSession and victimSession) then
+		return
+	end
+	if attackerSession.swingId ~= swingToken then
+		return
+	end -- kepotong ayunan baru
+	if not (LobbyPvPService.isActive(attacker) and LobbyPvPService.isActive(victim)) then
+		return
+	end
 
 	local now = os.clock()
 	attackerSession.lastCombat = now
@@ -379,9 +395,13 @@ end
 --   reason = "combat" | "cooldown"
 -- Kalau diterima, client cukup dengerin attribute LobbyPvP berubah.
 local function onToggle(player, wants)
-	if type(wants) ~= "boolean" then return end
+	if type(wants) ~= "boolean" then
+		return
+	end
 	local s = sessions[player]
-	if not s or s.wants == wants then return end
+	if not s or s.wants == wants then
+		return
+	end
 
 	local now = os.clock()
 	if now - s.lastToggle < CONFIG.TOGGLE_COOLDOWN then
@@ -400,7 +420,9 @@ local function onToggle(player, wants)
 end
 
 local function onPlayerAdded(player)
-	if sessions[player] then return end
+	if sessions[player] then
+		return
+	end
 	sessions[player] = newSession()
 	player:SetAttribute("LobbyPvP", false)
 	player:SetAttribute("LobbyPvPActive", false)

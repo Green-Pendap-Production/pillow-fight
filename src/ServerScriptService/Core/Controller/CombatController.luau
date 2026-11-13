@@ -58,10 +58,7 @@ CombatController.AttackStarted = Instance.new("BindableEvent")
 
 -- Validasi kelayakan pemain untuk berinteraksi/menerima damage
 local function canBeHit(state)
-	return state ~= nil
-		and state.isPlaying
-		and state.isAlive
-		and not state.isFFYL
+	return state ~= nil and state.isPlaying and state.isAlive and not state.isFFYL
 end
 
 -- Immune sesaat pasca-bangun FFYL (lihat BalanceConfig.FFYL_WIN_IMMUNE_DURATION).
@@ -71,9 +68,7 @@ end
 -- berkurang -- korban keliatan/kerasa "kena" padahal immune. Guard ini yang
 -- bikin pukulan bener-bener nembus tanpa efek apapun selama window immune.
 local function isImmune(state)
-	return state ~= nil
-		and state.ffylImmuneUntil ~= nil
-		and os.clock() < state.ffylImmuneUntil
+	return state ~= nil and state.ffylImmuneUntil ~= nil and os.clock() < state.ffylImmuneUntil
 end
 
 -- Pilih varian animasi hurt light berdasarkan arah kontak atau rotasi
@@ -85,7 +80,9 @@ local function pickLightHurtVariant(attackerPlayer, contact)
 
 	local attackerId = attackerPlayer and attackerPlayer.UserId or 0
 	local idx = (lightHurtIndex[attackerId] or 0) + 1
-	if idx > 2 then idx = 1 end
+	if idx > 2 then
+		idx = 1
+	end
 	lightHurtIndex[attackerId] = idx
 
 	return idx
@@ -130,7 +127,9 @@ end
 -- curang: tetap kena cooldown & biaya energi yang sama).
 function CombatController.performAction(player, actionType)
 	local playerState = PlayerStateRepository.get(player)
-	if not playerState then return end
+	if not playerState then
+		return
+	end
 
 	-- Mode tutorial: hanya aksi yang diizinkan tahap saat ini (nil/false = bebas)
 	local allowed = playerState.allowedActions
@@ -242,7 +241,9 @@ function CombatController.startSwing(attacker, victim, actionType)
 		local contact = HitboxService.strike(attacker, victim, actionType)
 		VFXService.endSwingTrail(trail)
 
-		if not contact then return end
+		if not contact then
+			return
+		end
 		CombatController.resolveHit(attacker, victim, actionType, contact, swingToken)
 	end)
 end
@@ -261,10 +262,14 @@ function CombatController.resolveHit(attacker, victim, actionType, contact, swin
 	end
 
 	local victimState = PlayerStateRepository.get(victim)
-	if not canBeHit(victimState) then return end
+	if not canBeHit(victimState) then
+		return
+	end
 
 	local attackerState = PlayerStateRepository.get(attacker)
-	if not canBeHit(attackerState) then return end
+	if not canBeHit(attackerState) then
+		return
+	end
 
 	-- Victim lagi immune (baru menang FFYL) -- anggap pukulan ini nembus
 	-- tanpa kontak sama sekali: gak ada damage, gak ada flinch/animasi
@@ -300,11 +305,7 @@ function CombatController.resolveHit(attacker, victim, actionType, contact, swin
 			-- "nggak kena". Numpang field flinchUntil yang sama dengan flinch
 			-- kena-pukul; efeknya identik (nggak bisa nyerang, masih bisa
 			-- dodge), cuma sumber sebabnya beda.
-			PlayerStateRepository.set(
-				attacker,
-				"flinchUntil",
-				now + GameplayConfig.PERFECT_DODGE_PUNISH
-			)
+			PlayerStateRepository.set(attacker, "flinchUntil", now + GameplayConfig.PERFECT_DODGE_PUNISH)
 
 			-- Dua event yang beda supaya UI bisa bedain siapa yang berhasil
 			-- baca dan siapa yang kebaca. Kamera flourish dipicu dua-duanya
@@ -321,9 +322,7 @@ function CombatController.resolveHit(attacker, victim, actionType, contact, swin
 		return
 	end
 
-	local damage = (actionType == "light")
-		and BalanceConfig.LIGHT_HIT
-		or BalanceConfig.HEAVY_HIT
+	local damage = (actionType == "light") and BalanceConfig.LIGHT_HIT or BalanceConfig.HEAVY_HIT
 
 	local attackerState = PlayerStateRepository.get(attacker)
 	damage = damage * ((attackerState and attackerState.damageMultiplier) or 1)
@@ -350,7 +349,9 @@ end
 -- Menerapkan efek animasi hurt pada target
 function CombatController.applyHit(victimPlayer, attackerPlayer, attackType, contact)
 	local victimState = PlayerStateRepository.get(victimPlayer)
-	if not victimState then return end
+	if not victimState then
+		return
+	end
 
 	local now = os.clock()
 	PlayerStateRepository.set(victimPlayer, "lastHitTime", now)
