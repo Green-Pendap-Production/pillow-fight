@@ -15,7 +15,9 @@ sourcemap.json
 .DS_Store
 Thumbs.db
 
-# Project-specific ignored folders
-ui/
-docs/
-skills/
+# Project-specific ignored folders (pakai "/" di depan = cuma folder di root.
+# Tanpa itu, "ui/" ikut nge-ignore src/.../UI/ karena Git di Windows gak
+# bedain huruf besar-kecil.)
+/ui/
+/docs/
+/skills/
