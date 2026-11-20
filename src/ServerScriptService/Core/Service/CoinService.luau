@@ -156,9 +156,10 @@ local function computeReward(player, didWin, isBotMatch, forfeited)
 	return total, breakdown
 end
 
+-- Return total coin yang dikasih (0 buat bot / pemain kosong).
 local function rewardPlayer(player, didWin, isBotMatch, forfeited)
 	if not player or RemoteSafety.isBot(player) then
-		return
+		return 0
 	end
 
 	local total, breakdown = computeReward(player, didWin, isBotMatch, forfeited)
@@ -174,16 +175,19 @@ local function rewardPlayer(player, didWin, isBotMatch, forfeited)
 		breakdown = breakdown,
 		balance = CoinService.getCoins(player),
 	})
+	return total
 end
 
 -- Dipanggil ArenaService.endMatch (match beneran selesai dengan pemenang).
 -- Match yang di-invalidate/abort sengaja TIDAK lewat sini -> gak ada coin.
 --   opts.isBotMatch     : match vs bot (reward kecil, gak ada streak bonus)
 --   opts.loserForfeited : loser kalah karena AFK / reset karakter
+-- Return: winnerTotal, loserTotal (dipakai layar hasil match di ArenaService).
 function CoinService.awardMatchResult(winner, loser, opts)
 	opts = opts or {}
-	rewardPlayer(winner, true, opts.isBotMatch, false)
-	rewardPlayer(loser, false, opts.isBotMatch, opts.loserForfeited)
+	local winnerTotal = rewardPlayer(winner, true, opts.isBotMatch, false)
+	local loserTotal = rewardPlayer(loser, false, opts.isBotMatch, opts.loserForfeited)
+	return winnerTotal, loserTotal
 end
 
 return CoinService

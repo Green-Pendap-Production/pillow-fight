@@ -59,6 +59,9 @@ local KOEvent -- remote untuk teks KO + trigger slowmo/zoom di client
 -- ini nutup bug lama: klik Reset di tengah match bikin karakter lama hancur
 -- lalu character baru muncul padahal ArenaService masih anggap match jalan.
 local MatchLockEvent
+-- Payload layar hasil match (VICTORY/DEFEAT + statistik + reward), ditembak
+-- sekali per pemain asli di endMatch. Dibaca ResultScreenClient.
+local MatchResultEvent
 
 -- Ready-handshake ronde (lihat ArenaService.init & startRound)
 local RoundReadyEvent
@@ -103,6 +106,7 @@ function ArenaService.init()
 	-- tidak pernah menerima sinyalnya.
 	KOEvent = getOrCreateRemote(remotesFolder, "KOEvent")
 	MatchLockEvent = getOrCreateRemote(remotesFolder, "MatchLockEvent")
+	MatchResultEvent = getOrCreateRemote(remotesFolder, "MatchResultEvent")
 
 	-- Ready-handshake ronde: client fire balik event yang sama begitu terima
 	-- prompt-nya, dipakai buat nunggu kedua pemain beneran siap (bukan asumsi)
@@ -1069,6 +1073,45 @@ function ArenaService.startRound(arenaName)
 	print("[ArenaService] Arena " .. arenaName .. " - Round " .. matchInfo.currentRound .. " dimulai!")
 end
 
+-- Kirim data layar hasil match ke tiap pemain asli. Tutorial di-skip: dia
+-- punya dialog penutup sendiri (TutorialBattleService.onMatchEnd).
+-- coinRewards[index] = total coin yang barusan dikasih CoinService.
+local function sendMatchResults(matchInfo, winnerIndex, coinRewards)
+	if not MatchResultEvent or matchInfo.tutorial then
+		return
+	end
+
+	for index, player in ipairs(matchInfo.players) do
+		if RemoteSafety.isRealPlayer(player) then
+			local opponentIndex = (index == 1) and 2 or 1
+			local opponent = matchInfo.players[opponentIndex]
+			local opponentName = nil
+			if opponent then
+				opponentName = RemoteSafety.isBot(opponent) and opponent.Name or opponent.DisplayName
+			end
+
+			local stats = (matchInfo.stats and matchInfo.stats[player]) or {}
+			RemoteSafety.fire(MatchResultEvent, player, {
+				didWin = index == winnerIndex,
+				isBotMatch = matchInfo.isBotMatch == true,
+				opponentName = opponentName,
+				score = { matchInfo.scores[index] or 0, matchInfo.scores[opponentIndex] or 0 },
+				stats = {
+					hits = stats.hits or 0,
+					perfectDodges = stats.perfectDodges or 0,
+					ffylSurvived = stats.ffylSurvived or 0,
+					bestCombo = stats.bestCombo or 0,
+				},
+				-- Key-nya dicocokin sama REWARD_CARDS di ResultScreenClient.
+				-- Mata uang baru (XP, token, dst) tinggal ditambah di sini.
+				rewards = {
+					coins = coinRewards[index] or 0,
+				},
+			})
+		end
+	end
+end
+
 function ArenaService.endMatch(arenaName, winnerIndex)
 	local matchInfo = activeMatches[arenaName]
 	if not matchInfo then
@@ -1104,7 +1147,12 @@ function ArenaService.endMatch(arenaName, winnerIndex)
 		if not isBotMatch then
 			LeaderboardService.recordWin(winner)
 		end
-		announce(arenaName, winner.Name .. " WINS THE MATCH!", 2.6)
+		-- Pemain asli di match biasa sudah dapet layar hasil match (lihat
+		-- sendMatchResults), jadi announcement ini cuma buat tutorial --
+		-- kalau dua-duanya tampil, teksnya numpuk di belakang layar hasil.
+		if matchInfo.tutorial then
+			announce(arenaName, winner.Name .. " WINS THE MATCH!", 2.6)
+		end
 		print("[ArenaService] " .. winner.Name .. " memenangkan match di " .. arenaName)
 	end
 
@@ -1126,9 +1174,15 @@ function ArenaService.endMatch(arenaName, winnerIndex)
 
 	-- Reward virtual coin. WAJIB setelah recordWin di atas -- bonus streak
 	-- baca winStreak yang udah ke-update. Bot otomatis di-skip di CoinService.
-	CoinService.awardMatchResult(winner, loser, {
+	local winnerCoins, loserCoins = CoinService.awardMatchResult(winner, loser, {
 		isBotMatch = isBotMatch,
 		loserForfeited = matchInfo.loserForfeited,
+	})
+
+	local loserIndex = (winnerIndex == 1) and 2 or 1
+	sendMatchResults(matchInfo, winnerIndex, {
+		[winnerIndex] = winnerCoins,
+		[loserIndex] = loserCoins,
 	})
 
 	task.wait(2.6)
@@ -1454,6 +1508,46 @@ function ArenaService.endRound(arenaName, winnerIndex)
 	end
 end
 
+-- ================================================================
+-- STATISTIK MATCH (buat layar hasil match)
+-- ================================================================
+local function newMatchStats()
+	return {
+		hits = 0, -- pukulan yang beneran landing ("Pillow Smacked")
+		perfectDodges = 0,
+		ffylSurvived = 0, -- berapa kali menang minigame FFYL
+		bestCombo = 0,
+	}
+end
+
+-- Statistik pemain di match aktifnya. Match yang lagi ending gak dihitung
+-- lagi (hasilnya sudah dikirim ke client).
+local function findMatchStats(player)
+	for _, matchInfo in pairs(activeMatches) do
+		local stats = matchInfo.stats and matchInfo.stats[player]
+		if stats then
+			return (not matchInfo.isEnding) and stats or nil
+		end
+	end
+	return nil
+end
+
+-- Tambah counter statistik (hits / perfectDodges / ffylSurvived).
+-- No-op kalau pemain gak lagi di match arena (mis. PvP lobby).
+function ArenaService.recordStat(player, key, amount)
+	local stats = findMatchStats(player)
+	if stats and type(stats[key]) == "number" then
+		stats[key] += amount or 1
+	end
+end
+
+function ArenaService.recordBestCombo(player, combo)
+	local stats = findMatchStats(player)
+	if stats and type(combo) == "number" and combo > stats.bestCombo then
+		stats.bestCombo = combo
+	end
+end
+
 -- Mengembalikan lawan dari player yang sedang dalam match yang sama.
 -- Dipakai CombatController untuk menentukan siapa yang kena pukulan.
 function ArenaService.getOpponent(player)
@@ -1528,7 +1622,11 @@ function ArenaService.startMatch(arenaName, players, opts)
 		tutorial = opts and opts.tutorial or false,
 		winsNeeded = opts and opts.winsNeeded or 2,
 		arenaFolder = opts and opts.arenaFolder,
+		stats = {}, -- stats[player] = newMatchStats()
 	}
+	for _, player in ipairs(players) do
+		matchInfo.stats[player] = newMatchStats()
+	end
 	activeMatches[arenaName] = matchInfo
 
 	print("[ArenaService] Match di " .. arenaName .. " dimulai!")

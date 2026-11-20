@@ -64,6 +64,11 @@ local function isLobbyPvPActive()
 	return humanoid ~= nil and humanoid.Health > 0
 end
 
+-- Aksi ini dimatiin selama PvP lobby (di match tetap boleh)?
+local function isDisabledInLobby(actionType)
+	return not isPlaying and GameplayConfig.LOBBY_PVP_DISABLED_ACTIONS[actionType] == true
+end
+
 -- Gerbang utama input client
 local function canAct()
 	-- Hard gate: isPlaying hanya berarti ronde sedang aktif. isLocked
@@ -91,6 +96,9 @@ local lastUsed = {
 }
 
 local function canUse(actionType)
+	if isDisabledInLobby(actionType) then
+		return false
+	end
 	local now = os.clock()
 	if now - (lastUsed[actionType] or 0) >= (GameplayConfig.COOLDOWNS[actionType] or 0) then
 		lastUsed[actionType] = now
@@ -145,9 +153,34 @@ if isMobile then
 end
 
 -- Tombol mobile tampil selama ronde match ATAU selama PvP lobby aktif.
+-- Di lobby, tombol aksi yang dimatiin (LOBBY_PVP_DISABLED_ACTIONS)
+-- disembunyiin. Visible cuma diubah pas transisi hide/restore (dicatat di
+-- hiddenForLobby) supaya gak bentrok sama FFYLClient yang juga ngatur
+-- Visible tombol-tombol ini selama minigame FFYL di match.
+local MOBILE_BUTTONS = {
+	light = "LightBtn",
+	heavy = "HeavyBtn",
+	dodge = "DodgeBtn",
+}
+local hiddenForLobby = {}
+
 local function refreshMobileGui()
 	if isMobile and mobileGui then
 		mobileGui.Enabled = isPlaying or LocalPlayer:GetAttribute("LobbyPvPActive") == true
+
+		for actionType, buttonName in pairs(MOBILE_BUTTONS) do
+			local button = container:FindFirstChild(buttonName)
+			if button and button:IsA("GuiObject") then
+				local shouldHide = isDisabledInLobby(actionType)
+				if shouldHide and not hiddenForLobby[actionType] then
+					hiddenForLobby[actionType] = true
+					button.Visible = false
+				elseif not shouldHide and hiddenForLobby[actionType] then
+					hiddenForLobby[actionType] = nil
+					button.Visible = true
+				end
+			end
+		end
 	end
 end
 

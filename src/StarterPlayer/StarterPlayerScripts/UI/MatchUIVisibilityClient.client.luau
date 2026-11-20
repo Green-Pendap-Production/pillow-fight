@@ -19,6 +19,14 @@ local MatchLockEvent = remotes:WaitForChild("MatchLockEvent")
 local isInMatch = false
 local isOnPad = false
 
+-- Atribut lokal dari ResultScreenClient: layar hasil match masih kebuka.
+-- Teleport balik ke lobby terjadi di belakang layar itu, jadi UI lobby
+-- jangan nongol dulu sampai layarnya ditutup.
+local RESULT_SCREEN_ATTRIBUTE = "ResultScreenOpen"
+local function isResultScreenOpen()
+	return player:GetAttribute(RESULT_SCREEN_ATTRIBUTE) == true
+end
+
 local function getShopUI()
 	return playerGui:FindFirstChild("PlayerGui") or playerGui:WaitForChild("PlayerGui", 5)
 end
@@ -40,16 +48,18 @@ local function setCoreUIEnabled(enabled)
 end
 
 local function refreshVisibility()
-	local shouldHide = isInMatch or isOnPad
+	local shouldHide = isInMatch or isOnPad or isResultScreenOpen()
 	setShopUIEnabled(not shouldHide)
 	setCoreUIEnabled(not shouldHide)
 end
 
 refreshVisibility()
 
+player:GetAttributeChangedSignal(RESULT_SCREEN_ATTRIBUTE):Connect(refreshVisibility)
+
 playerGui.ChildAdded:Connect(function(child)
 	if child.Name == "PlayerGui" and child:IsA("ScreenGui") then
-		child.Enabled = not (isInMatch or isOnPad)
+		child.Enabled = not (isInMatch or isOnPad or isResultScreenOpen())
 	end
 end)
 

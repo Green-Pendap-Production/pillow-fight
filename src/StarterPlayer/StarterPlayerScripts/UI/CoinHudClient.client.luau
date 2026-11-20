@@ -249,9 +249,18 @@ end
 -- ================================================================
 -- REWARD POPUP
 -- ================================================================
+-- Atribut lokal yang di-set ResultScreenClient selama layar hasil match
+-- kebuka. Popup reward ditahan sampai layarnya ditutup, supaya "+X" dan
+-- angka saldo yang naik beneran kelihatan (gak ketutup layar hasil).
+local RESULT_SCREEN_ATTRIBUTE = "ResultScreenOpen"
+
 local isInMatch = false
 local pendingReward = nil
 local toastToken = 0
+
+local function isResultScreenOpen()
+	return player:GetAttribute(RESULT_SCREEN_ATTRIBUTE) == true
+end
 
 local function setToastTransparency(alpha)
 	toastAmount.TextTransparency = alpha
@@ -308,9 +317,9 @@ CoinRewardEvent.OnClientEvent:Connect(function(payload)
 		return
 	end
 
-	if isInMatch then
-		-- Masih di layar match (announcement "X WINS THE MATCH!") -- tahan
-		-- dulu, dipopup begitu MatchLockEvent(false) / balik ke lobby.
+	if isInMatch or isResultScreenOpen() then
+		-- Masih di match / layar hasil match masih kebuka -- tahan dulu,
+		-- dipopup begitu balik ke lobby DAN layar hasilnya udah ditutup.
 		pendingReward = payload
 	else
 		showReward(payload)
@@ -327,19 +336,27 @@ end)
 -- ================================================================
 -- VISIBILITY (sembunyi selama match)
 -- ================================================================
+-- Popup reward yang ditahan baru ditampilin begitu udah di lobby DAN layar
+-- hasil match udah ditutup.
+local function flushPendingReward()
+	screenGui.Enabled = not (isInMatch or isResultScreenOpen())
+	if isInMatch or isResultScreenOpen() then
+		return
+	end
+	if pendingReward then
+		local payload = pendingReward
+		pendingReward = nil
+		showReward(payload)
+	else
+		animateBalanceTo(player:GetAttribute(COINS_ATTRIBUTE) or 0)
+	end
+end
+
 MatchLockEvent.OnClientEvent:Connect(function(locked)
 	isInMatch = locked == true
-	screenGui.Enabled = not isInMatch
-
-	if not isInMatch then
-		if pendingReward then
-			local payload = pendingReward
-			pendingReward = nil
-			showReward(payload)
-		else
-			animateBalanceTo(player:GetAttribute(COINS_ATTRIBUTE) or 0)
-		end
-	end
+	flushPendingReward()
 end)
+
+player:GetAttributeChangedSignal(RESULT_SCREEN_ATTRIBUTE):Connect(flushPendingReward)
 
 print("[CoinHudClient] Berhasil diinisialisasi")

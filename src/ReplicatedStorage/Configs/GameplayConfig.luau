@@ -197,6 +197,13 @@ local GameplayConfig = {
 	-- naikin (mis. +0.3). Ubah 0.1-0.3 per percobaan, gak usah drastis.
 	STANDING_HEIGHT_ADJUST = -0.9,
 }
+-- Aksi yang DIMATIIN selama PvP lobby (di match tetap jalan). Dicek di
+-- client (InputController: input diabaikan, tombol mobile disembunyiin)
+-- dan di server (LobbyPvPService.performAction: ditolak).
+GameplayConfig.LOBBY_PVP_DISABLED_ACTIONS = {
+	heavy = true,
+}
+
 GameplayConfig.LIGHTATTACK_KEY = Enum.KeyCode.E
 GameplayConfig.HEAVYATTACK_KEY = Enum.UserInputType.MouseButton2
 GameplayConfig.DODGE_KEY = Enum.KeyCode.Q

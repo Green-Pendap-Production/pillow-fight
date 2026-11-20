@@ -49,6 +49,14 @@ local VALID_ACTIONS = {
 
 local lightHurtIndex = {}
 
+-- Lazy: ArenaService me-require service lain yang ujungnya bisa balik ke
+-- sini, jadi jangan di-require di top-level.
+local ArenaService
+local function getArenaService()
+	ArenaService = ArenaService or require(ServerScriptService.Core.Service.ArenaService)
+	return ArenaService
+end
+
 -- Sinyal internal (BUKAN RemoteEvent -- ini BindableEvent server-only) yang
 -- nyala tiap kali sebuah ayunan BENERAN mulai (lolos validasi cooldown/energi).
 -- Dipakai BotAIService buat "denger" kapan lawan (manusia) mulai nyerang bot,
@@ -186,8 +194,7 @@ function CombatController.performAction(player, actionType)
 		if actionType == "dodge" then
 			PlayerStateRepository.set(player, "lastDodgeTime", now)
 		elseif actionType == "light" or actionType == "heavy" then
-			local ArenaService = require(ServerScriptService.Core.Service.ArenaService)
-			local opponent = ArenaService.getOpponent(player)
+			local opponent = getArenaService().getOpponent(player)
 
 			if opponent then
 				CombatController.startSwing(player, opponent, actionType)
@@ -313,6 +320,8 @@ function CombatController.resolveHit(attacker, victim, actionType, contact, swin
 			-- ngedodge.
 			RemoteSafety.fire(AttackResultEvent, victim, "perfectDodge", true)
 			RemoteSafety.fire(AttackResultEvent, attacker, "perfectDodgeHit", true)
+
+			getArenaService().recordStat(victim, "perfectDodges")
 		else
 			-- Dodge biasa: cukup nggak kena. Tanpa flourish, tanpa hadiah.
 			RemoteSafety.fire(AttackResultEvent, victim, "dodgeSuccess", true)
@@ -344,6 +353,10 @@ function CombatController.resolveHit(attacker, victim, actionType, contact, swin
 	local comboCount = ComboService.onHitLanded(attacker)
 	RemoteSafety.fire(AttackResultEvent, attacker, "comboUpdate", true, comboCount)
 	RemoteSafety.fire(AttackResultEvent, attacker, "hitConfirm", true, actionType)
+
+	-- Statistik layar hasil match ("Pillow Smacked" + combo terbaik)
+	getArenaService().recordStat(attacker, "hits")
+	getArenaService().recordBestCombo(attacker, comboCount)
 end
 
 -- Menerapkan efek animasi hurt pada target

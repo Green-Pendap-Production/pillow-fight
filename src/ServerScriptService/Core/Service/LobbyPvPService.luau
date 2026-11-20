@@ -414,6 +414,12 @@ function LobbyPvPService.performAction(player, actionType)
 		return false
 	end
 
+	-- Aksi yang dimatiin di lobby (mis. heavy) -- lihat GameplayConfig.
+	if GameplayConfig.LOBBY_PVP_DISABLED_ACTIONS[actionType] then
+		RemoteSafety.fire(AttackResultEvent, player, actionType, false)
+		return false
+	end
+
 	local now = os.clock()
 
 	if actionType ~= "dodge" and now < s.flinchUntil then

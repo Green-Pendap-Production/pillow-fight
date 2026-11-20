@@ -58,6 +58,10 @@ function FFYLService.handleSuccess(player)
 
 	local BalanceService = require(ServerScriptService.Core.Service.BalanceService)
 	BalanceService.recoverFFYL(player)
+
+	-- Statistik layar hasil match
+	local ArenaService = require(ServerScriptService.Core.Service.ArenaService)
+	ArenaService.recordStat(player, "ffylSurvived")
 end
 
 -- Menangani kegagalan pemain jika waktu minigame habis
