@@ -15,6 +15,7 @@ local StreakDisplayService = require(Services.StreakDisplayService) -- DITAMBAHK
 local CoinService = require(Services.CoinService)
 local TutorialBattleService = require(Services.TutorialBattleService)
 local LobbyPvPService = require(Services.LobbyPvPService)
+local EmojiService = require(Services.EmojiService)
 
 local PlayerStateRepository = require(Core.Repository.PlayerStateRepository)
 
@@ -45,6 +46,9 @@ end
 
 if LobbyPvPService.init then
 	LobbyPvPService.init()
+end
+if EmojiService.init then
+	EmojiService.init()
 end
 
 -- INIT CONTROLLERS
