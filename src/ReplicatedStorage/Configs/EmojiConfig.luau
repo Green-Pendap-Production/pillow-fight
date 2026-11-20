@@ -4,9 +4,6 @@
     Layer      : ReplicatedStorage (Configs)
     Deskripsi  : Daftar emoji/emote untuk radial fan in-game + pengaturan
                  cooldown & durasi tampil di atas kepala karakter.
-                 Field `image` dikosongkan sebagai dummy (akan render badge
-                 simbol & label). Tinggal isi "rbxassetid://..." kalau aset
-                 gambar sudah siap.
 ]]
 
 local EmojiConfig = {}
@@ -15,45 +12,65 @@ EmojiConfig.COOLDOWN = 2.5 -- detik antar kirim emoji
 EmojiConfig.DISPLAY_DURATION = 2.2 -- detik emoji tampil di atas kepala
 
 -- Pengaturan kipas (radial fan) di sisi kanan tengah layar
-EmojiConfig.FAN_RADIUS = 115 -- pixel jarak slot dari tombol utama
-EmojiConfig.FAN_SPREAD_DEG = 140 -- total sudut kipas menghadap ke kiri (derajat)
-EmojiConfig.CANCEL_RADIUS = 32 -- jarak dari pusat tombol untuk batal/cancel
+EmojiConfig.FAN_RADIUS = 172 -- pixel jarak slot dari tombol utama
+EmojiConfig.FAN_SPREAD_DEG = 156 -- total sudut kipas menghadap ke kiri (derajat)
+EmojiConfig.CANCEL_RADIUS = 30 -- jarak dari pusat untuk batal/cancel
+EmojiConfig.TAB_DEADZONE = 18 -- jarak gerak mouse minimal saat hold Tab
 
 EmojiConfig.EMOJIS = {
 	{
-		id = "gg",
-		label = "GG!",
-		symbol = "GG",
-		color = Color3.fromRGB(255, 200, 60),
-		image = "",
+		id = "cry",
+		label = "CRY",
+		symbol = "T_T",
+		topColor = Color3.fromRGB(115, 185, 255),
+		bottomColor = Color3.fromRGB(60, 115, 215),
+		rimColor = Color3.fromRGB(28, 48, 105),
+		image = "rbxassetid://120991223819434",
 	},
 	{
-		id = "happy",
-		label = "EZ!",
-		symbol = ":D",
-		color = Color3.fromRGB(90, 220, 130),
-		image = "",
+		id = "doomed",
+		label = "DOOMED",
+		symbol = "O_O",
+		topColor = Color3.fromRGB(185, 150, 255),
+		bottomColor = Color3.fromRGB(115, 70, 195),
+		rimColor = Color3.fromRGB(52, 26, 100),
+		image = "rbxassetid://87678979966873",
 	},
 	{
-		id = "angry",
-		label = "GRR!",
-		symbol = ">:(",
-		color = Color3.fromRGB(245, 85, 85),
-		image = "",
+		id = "goofy",
+		label = "GOOFY",
+		symbol = ":P",
+		topColor = Color3.fromRGB(255, 225, 85),
+		bottomColor = Color3.fromRGB(240, 165, 25),
+		rimColor = Color3.fromRGB(115, 65, 10),
+		image = "rbxassetid://132419403022486",
+	},
+	{
+		id = "olok",
+		label = "OLOK",
+		symbol = "HAHA",
+		topColor = Color3.fromRGB(255, 175, 75),
+		bottomColor = Color3.fromRGB(225, 105, 30),
+		rimColor = Color3.fromRGB(110, 42, 12),
+		image = "rbxassetid://80711252424875",
 	},
 	{
 		id = "laugh",
-		label = "HAHA",
+		label = "LAUGH",
 		symbol = "XD",
-		color = Color3.fromRGB(255, 155, 65),
-		image = "",
+		topColor = Color3.fromRGB(110, 225, 100),
+		bottomColor = Color3.fromRGB(40, 165, 55),
+		rimColor = Color3.fromRGB(20, 75, 28),
+		image = "rbxassetid://78989481012686",
 	},
 	{
-		id = "cry",
-		label = "HUHU",
-		symbol = "T_T",
-		color = Color3.fromRGB(100, 185, 255),
-		image = "",
+		id = "pfft",
+		label = "PFFT",
+		symbol = "PFFT",
+		topColor = Color3.fromRGB(245, 95, 95),
+		bottomColor = Color3.fromRGB(185, 40, 50),
+		rimColor = Color3.fromRGB(90, 20, 28),
+		image = "rbxassetid://140380484045651",
 	},
 }
 
