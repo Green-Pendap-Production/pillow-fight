@@ -327,7 +327,8 @@ end
 -- Tidak ada FALLBACK_WHEN_NO_PILLOW di sini: tanpa bantal di lobby, ayunan
 -- cukup meleset -- gak ada match yang bisa nge-hang.
 function HitboxService.strikeAny(attacker, actionType, getTargets)
-	local window = HitboxConfig.ACTIVE_WINDOW[actionType]
+	-- Animasi lobby beda timing sama match (lihat LOBBY_ACTIVE_WINDOW).
+	local window = HitboxConfig.LOBBY_ACTIVE_WINDOW[actionType] or HitboxConfig.ACTIVE_WINDOW[actionType]
 	if not window then
 		return nil
 	end
@@ -337,7 +338,7 @@ function HitboxService.strikeAny(attacker, actionType, getTargets)
 		return nil
 	end
 
-	local speed = AnimationConfig.SPEED[actionType] or 1
+	local speed = AnimationConfig.LOBBY_PVP_SPEED[actionType] or AnimationConfig.SPEED[actionType] or 1
 	if speed <= 0 then
 		speed = 1
 	end

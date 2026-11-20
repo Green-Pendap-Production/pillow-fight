@@ -32,6 +32,11 @@ local tracks = {}
 local lightAnimIndex = 1
 local hurtAnimIndex = 1
 
+-- Track khusus PvP lobby (AnimationConfig.LOBBY_PVP_ANIMATIONS), dipisah
+-- dari `tracks` supaya gak nimpa animasi match dengan actionType yang sama.
+local lobbyTracks = {}
+local lobbyAnimIndex = {}
+
 local currentActionTrack = nil
 local isInFFYL = false
 local isStunned = false
@@ -101,6 +106,7 @@ local function preloadAllAnimations()
 	collectIds(AnimationConfig.COMBAT_ANIMATIONS)
 	collectIds(AnimationConfig.HURT_ANIMATIONS)
 	collectIds(AnimationConfig.FFYL_ANIMATIONS)
+	collectIds(AnimationConfig.LOBBY_PVP_ANIMATIONS)
 
 	if #assetsToPreload > 0 then
 		pcall(function()
@@ -109,11 +115,12 @@ local function preloadAllAnimations()
 	end
 end
 
--- Inisialisasi set animasi ke Animator
-local function loadAnimationSet(configTable, priorityLevel)
+-- Inisialisasi set animasi ke Animator. `target` default ke `tracks`.
+local function loadAnimationSet(configTable, priorityLevel, target)
+	target = target or tracks
 	for actionType, animData in pairs(configTable) do
 		if type(animData) == "table" then
-			tracks[actionType] = {}
+			target[actionType] = {}
 			for _, animId in ipairs(animData) do
 				if animId ~= "" then
 					local animInstance = Instance.new("Animation")
@@ -122,7 +129,7 @@ local function loadAnimationSet(configTable, priorityLevel)
 					local track = animator:LoadAnimation(animInstance)
 					track.Priority = priorityLevel
 					track.Looped = (actionType == "fall" or actionType == "stun")
-					table.insert(tracks[actionType], track)
+					table.insert(target[actionType], track)
 				end
 			end
 		else
@@ -134,7 +141,7 @@ local function loadAnimationSet(configTable, priorityLevel)
 				local track = animator:LoadAnimation(animInstance)
 				track.Priority = priorityLevel
 				track.Looped = (actionType == "fall" or actionType == "stun")
-				tracks[actionType] = track
+				target[actionType] = track
 			end
 		end
 	end
@@ -169,7 +176,9 @@ end
 loadAnimationSet(AnimationConfig.COMBAT_ANIMATIONS, Enum.AnimationPriority.Action)
 loadAnimationSet(AnimationConfig.HURT_ANIMATIONS, Enum.AnimationPriority.Action2)
 loadAnimationSet(AnimationConfig.FFYL_ANIMATIONS, Enum.AnimationPriority.Action4)
+loadAnimationSet(AnimationConfig.LOBBY_PVP_ANIMATIONS, Enum.AnimationPriority.Action, lobbyTracks)
 warmUpTracks(tracks)
+warmUpTracks(lobbyTracks)
 
 if AnimationConfig.DEFEAT_ANIMATION and AnimationConfig.DEFEAT_ANIMATION ~= "" then
 	local defeatAnim = Instance.new("Animation")
@@ -279,9 +288,18 @@ local function stopConflictingAnimations(actionType)
 	end
 end
 
+-- PvP lobby aktif? Attribute diset SERVER (LobbyPvPService).
+local function isLobbyPvPActive()
+	return player:GetAttribute("LobbyPvPActive") == true
+end
+
 -- Memutar animasi
 local function playAnimation(actionType, variantIndex)
-	local trackData = tracks[actionType]
+	-- Di PvP lobby, aksi yang punya versi lobby pakai track lobby. actionType
+	-- tetap sama (currentActionTrack / pendingPredictedTrack tetap per
+	-- light/heavy/dodge), cuma sumber track & speed-nya yang beda.
+	local isLobby = isLobbyPvPActive() and lobbyTracks[actionType] ~= nil
+	local trackData = isLobby and lobbyTracks[actionType] or tracks[actionType]
 	if not trackData then
 		return
 	end
@@ -291,7 +309,15 @@ local function playAnimation(actionType, variantIndex)
 	local track
 
 	if type(trackData) == "table" then
-		if variantIndex and variantIndex <= #trackData then
+		if isLobby then
+			-- Gantian varian 1 -> 2 -> 1 ... (index sendiri, terpisah dari match)
+			local index = lobbyAnimIndex[actionType] or 1
+			if index > #trackData then
+				index = 1
+			end
+			track = trackData[index]
+			lobbyAnimIndex[actionType] = (index % #trackData) + 1
+		elseif variantIndex and variantIndex <= #trackData then
 			track = trackData[variantIndex]
 		elseif actionType == "light" then
 			track = trackData[lightAnimIndex]
@@ -311,7 +337,7 @@ local function playAnimation(actionType, variantIndex)
 	end
 
 	local fadeIn = getFadeTime(actionType, false)
-	local speed = getSpeed(actionType)
+	local speed = (isLobby and AnimationConfig.LOBBY_PVP_SPEED[actionType]) or getSpeed(actionType)
 	local weight = getWeight(actionType)
 
 	track:Stop(0)
@@ -474,6 +500,8 @@ player.CharacterAdded:Connect(function(newCharacter)
 	animator = humanoid:WaitForChild("Animator")
 
 	tracks = {}
+	lobbyTracks = {}
+	lobbyAnimIndex = {}
 	currentActionTrack = nil
 	lightAnimIndex = 1
 	hurtAnimIndex = 1
@@ -484,7 +512,9 @@ player.CharacterAdded:Connect(function(newCharacter)
 	loadAnimationSet(AnimationConfig.COMBAT_ANIMATIONS, Enum.AnimationPriority.Action)
 	loadAnimationSet(AnimationConfig.HURT_ANIMATIONS, Enum.AnimationPriority.Action2)
 	loadAnimationSet(AnimationConfig.FFYL_ANIMATIONS, Enum.AnimationPriority.Action4)
+	loadAnimationSet(AnimationConfig.LOBBY_PVP_ANIMATIONS, Enum.AnimationPriority.Action, lobbyTracks)
 	warmUpTracks(tracks)
+	warmUpTracks(lobbyTracks)
 
 	if AnimationConfig.DEFEAT_ANIMATION and AnimationConfig.DEFEAT_ANIMATION ~= "" then
 		local defeatAnim = Instance.new("Animation")

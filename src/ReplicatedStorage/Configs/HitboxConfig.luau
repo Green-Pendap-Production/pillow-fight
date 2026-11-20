@@ -41,6 +41,14 @@ HitboxConfig.ACTIVE_WINDOW = {
 	heavy = { start = 0.20, stop = 0.55 },
 }
 
+-- Jendela aktif PvP lobby (AnimationConfig.LOBBY_PVP_ANIMATIONS). Animasi
+-- light lobby (1.0 dtk) ancang-ancang di 0-0.25 dtk, ayunan utama
+-- ~0.27-0.50 dtk (puncak ~0.38). Aksi yang gak ada di sini pakai
+-- ACTIVE_WINDOW biasa.
+HitboxConfig.LOBBY_ACTIVE_WINDOW = {
+	light = { start = 0.26, stop = 0.50 },
+}
+
 -- Kompensasi ping dan toleransi jaringan untuk deteksi kontak.
 HitboxConfig.MAX_PING_COMPENSATION = 0.25
 HitboxConfig.LATENCY_GRACE = 0.15

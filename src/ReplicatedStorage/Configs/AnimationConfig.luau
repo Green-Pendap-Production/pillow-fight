@@ -36,6 +36,24 @@ local AnimationConfig = {
 		endFFYL = "rbxassetid://123514296806029",
 	},
 
+	-- Animasi khusus PvP lobby. Key = actionType yang sama dengan match;
+	-- kalau ada di sini, AnimationController (client) dan
+	-- HitboxService.strikeAny (server) pakai versi lobby ini, bukan
+	-- COMBAT_ANIMATIONS. Aksi yang gak ada di sini (heavy/dodge) tetap
+	-- pakai animasi match.
+	LOBBY_PVP_ANIMATIONS = {
+		light = {
+			"rbxassetid://108161530858264",
+			"rbxassetid://72535694317465",
+		},
+	},
+
+	-- Kecepatan animasi lobby (ikut dipakai server buat skala jendela hitbox,
+	-- lihat HitboxConfig.LOBBY_ACTIVE_WINDOW).
+	LOBBY_PVP_SPEED = {
+		light = 1.0,
+	},
+
 	DEFEAT_ANIMATION = "rbxassetid://123112398953969",
 	MATCH_IDLE = "rbxassetid://117911095686069",
 

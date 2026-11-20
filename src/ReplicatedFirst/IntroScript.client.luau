@@ -112,6 +112,7 @@ local animationIds = {}
 collectAnimationIds(AnimationConfig.COMBAT_ANIMATIONS, animationIds)
 collectAnimationIds(AnimationConfig.HURT_ANIMATIONS, animationIds)
 collectAnimationIds(AnimationConfig.FFYL_ANIMATIONS, animationIds)
+collectAnimationIds(AnimationConfig.LOBBY_PVP_ANIMATIONS, animationIds)
 
 if AnimationConfig.DEFEAT_ANIMATION and AnimationConfig.DEFEAT_ANIMATION ~= "" then
 	table.insert(animationIds, AnimationConfig.DEFEAT_ANIMATION)
