@@ -12,6 +12,7 @@ local ShopService = {}
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local PlayerStateRepository = require(ServerScriptService.Core.Repository.PlayerStateRepository)
@@ -227,6 +228,11 @@ local function processReceipt(receiptInfo)
 end
 
 local function checkGamePasses(player)
+	-- Di Studio, akun creator otomatis memiliki semua Game Pass yang dibuatnya sendiri.
+	-- Lewati auto-grant saat di Studio agar developer tetap bisa menguji Shop/pembelian.
+	if RunService:IsStudio() then
+		return
+	end
 	for _, item in ipairs(ShopConfig.PILLOWS) do
 		if item.gamePassId and item.gamePassId > 0 then
 			local ok, owns = pcall(function()
@@ -272,7 +278,7 @@ function ShopService.init()
 				local ok, owns = pcall(function()
 					return MarketplaceService:UserOwnsGamePassAsync(player.UserId, gamePassId)
 				end)
-				if ok and owns then
+				if (ok and owns) or RunService:IsStudio() then
 					grantPillow(player, item.id)
 					syncToClient(player, true, "GamePass " .. item.name .. " aktif!")
 				end

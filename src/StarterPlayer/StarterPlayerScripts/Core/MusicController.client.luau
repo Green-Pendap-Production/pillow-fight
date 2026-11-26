@@ -34,9 +34,15 @@ local musicGroup = SoundService:FindFirstChild("MusicGroup")
 if not musicGroup then
 	musicGroup = Instance.new("SoundGroup")
 	musicGroup.Name = "MusicGroup"
-	musicGroup.Volume = 1
 	musicGroup.Parent = SoundService
 end
+
+local function applyMusicVolume()
+	local vol = SoundService:GetAttribute("MusicVolume")
+	musicGroup.Volume = if type(vol) == "number" then math.clamp(vol, 0, 1) else 1
+end
+applyMusicVolume()
+SoundService:GetAttributeChangedSignal("MusicVolume"):Connect(applyMusicVolume)
 
 local function resolveSoundId(id)
 	if typeof(id) == "number" then
