@@ -13,6 +13,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
 
 local SoundConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("SoundConfig"))
 
@@ -126,8 +127,10 @@ local function playSound(soundName, pitchScale, volumeScale)
 	-- Selalu dihitung ulang dari nilai dasar, bukan dari nilai sebelumnya --
 	-- ini yang mencegah pitch combo bocor ke pukulan berikutnya (dulu
 	-- ditangani dengan reset manual ke 1 di jalur non-combo saja).
+	local sfxMaster = SoundService:GetAttribute("SFXVolume")
+	local sfxMult = if type(sfxMaster) == "number" then math.clamp(sfxMaster, 0, 1) else 1
 	sound.PlaybackSpeed = (pitchScale or 1) * jitter(PITCH_JITTER)
-	sound.Volume = (baseVolume[sound] or 1) * (volumeScale or 1) * jitter(VOLUME_JITTER)
+	sound.Volume = (baseVolume[sound] or 1) * (volumeScale or 1) * sfxMult * jitter(VOLUME_JITTER)
 	sound.TimePosition = 0
 	sound:Play()
 end

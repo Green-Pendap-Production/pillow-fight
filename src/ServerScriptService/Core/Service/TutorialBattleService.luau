@@ -53,52 +53,52 @@ local CONFIG = {
 
 -- Teks Coach (galak tapi lucu). Nilai berupa list = dipilih acak. Edit sesuka hati.
 local LINES = {
-	attackIntro = "Itu lawanmu. Klik kiri, pukul dia pakai bantal.",
-	attackAgain = "Sekali lagi. Pengulangan adalah kunci.",
+	attackIntro = "Itu lawanmu. Klik kiri buat mukul.",
+	attackAgain = "Sekali lagi.",
 	miss = {
-		"Itu cuma angin. Dia ada di depanmu, lho.",
+		"Angin doang itu. Deketin lagi.",
 		"Meleset. Coba lagi.",
-		"Mukul udara, ya? Lumayan buat olahraga lengan.",
+		"Kurang dekat, maju dikit.",
 	},
 	attackReward = {
-		"Nah, begitu. Kena!",
-		"Lumayan. Bantalmu ternyata ada gunanya.",
-		"Mantap. Lihat mukanya, dia kaget.",
-		"Bagus. Pertahankan ritmenya.",
+		"Nah, kena.",
+		"Pas. Lumayan juga.",
+		"Bagus, gitu terus.",
+		"Masuk!",
 	},
 
-	energy = "Tunggu dulu. Tiap pukulan makan energi, dan kalau habis kamu bakal ke-stun. Pukul saat ada celah.",
+	energy = "Perhatiin energimu. Tiap mukul butuh energi, kalau habis kamu bakal pusing.",
 
-	dodgeIntro = "Sekarang gantian dia yang menyerang. Bersiaplah dan tekan Q untuk menghindar.",
+	dodgeIntro = "Giliran dia mukul. Siapin jari di tombol Q.",
 	dodgeNow = {
-		"Awas! Tekan Q sekarang!",
-		"Dia mengayun! Q, Q, Q!",
-		"Menghindar! Tekan Q!",
+		"Awas! Tekan Q!",
+		"Sekarang! Q!",
+		"Hindar! Tekan Q!",
 	},
-	dodgeAgain = "Sekali lagi. Kali ini dia sedikit lebih cepat, jadi jangan kaget.",
+	dodgeAgain = "Lagi. Kali ini agak lebih cepat.",
 	dodgeFail = {
-		"Kena. Tunggu dia mengayun, baru tekan Q. Sabar.",
-		"Aduh. Sakit? Wajar. Coba lagi, jangan terlalu cepat dan jangan terlambat.",
-		"Kena lagi. Perhatikan gerakan bantalnya, lalu Q.",
+		"Kena kan. Tunggu dia ayun dulu, baru Q.",
+		"Kecepetan atau telat tuh. Coba lagi.",
+		"Liat bantalnya pas mau kena, baru Q.",
 	},
 	dodgeReward = {
-		"Licin banget.",
-		"Hampir saja aku kagum. Hampir.",
-		"Begitu caranya. Bantalnya cuma kena angin.",
-		"Mulus. Kamu punya bakat.",
+		"Licin.",
+		"Mulus, gak kena sama sekali.",
+		"Pas banget timingnya.",
+		"Mantap, gitu cara hindarnya.",
 	},
 
-	heavyIntro = "Dia kehabisan napas. Ini kesempatan emas buat pukulan berat. Klik kanan, kasih paham dia.",
+	heavyIntro = "Dia lagi kehabisan napas. Klik kanan buat pukulan berat.",
 	heavyAgain = "Sekali lagi, yang keras.",
 	heavyReward = {
-		"Boom! Energinya mahal, tapi damagenya juga mahal.",
-		"Mantap. Tapi jangan sering-sering, energimu bisa habis",
-		"Itu baru pukulan. Dia pasti ingat sampai besok.",
+		"Telak! Damage gede, tapi energinya juga boros.",
+		"Mantap. Pakai pas ada celah aja ya.",
+		"Kena telak tuh.",
 	},
 
-	idleReset = "Kok bengong? Kuisi lagi darah kalian berdua. Ayo, bergerak.",
-	free = "Latihan selesai... hampir. Sekarang lawan sungguhan. Dia sudah kusuruh lebih santai, jadi tumbangkan dia.",
-	done = "Lulus. Aku bangga sama kamu. Sedikit. Sekarang pergi dan menangkan arena.",
+	idleReset = "Kok bengong? Darah kuisi lagi, ayo gerak.",
+	free = "Latihan beres. Sekarang tumbangin dia beneran.",
+	done = "Mantap, kamu udah siap. Sana buktiin di arena.",
 }
 
 local promptEvent
@@ -633,65 +633,37 @@ local function setupSirNattos(model)
 		return
 	end
 
-	local dialog = head:FindFirstChildOfClass("Dialog")
-	if not dialog then
-		dialog = Instance.new("Dialog")
-		dialog.Name = "TutorialDialog"
-		dialog.InitialPrompt = TutorialConfig.INITIAL_PROMPT
-		dialog.GoodbyeDialog = TutorialConfig.GOODBYE_DIALOG
-		dialog.ConversationDistance = TutorialConfig.CONVERSATION_DISTANCE
-		dialog.Tone = Enum.DialogTone.Friendly
-		dialog.Purpose = Enum.DialogPurpose.Help
-		dialog.Parent = head
+	-- Bersihkan native Roblox Dialog lama jika masih ada di model Studio
+	local oldDialog = head:FindFirstChildOfClass("Dialog")
+	if oldDialog then
+		oldDialog:Destroy()
 	end
 
-	local choiceTutorial = dialog:FindFirstChild("StartTutorial")
-	if not choiceTutorial then
-		for _, child in ipairs(dialog:GetChildren()) do
-			if
-				child:IsA("DialogChoice")
-				and (
-					string.find(string.lower(child.UserDialog), "latihan")
-					or string.find(string.lower(child.UserDialog), "tarung")
-				)
-			then
-				choiceTutorial = child
-				break
-			end
+	local prompt = head:FindFirstChild("TutorialTalkPrompt")
+	if not prompt then
+		prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "TutorialTalkPrompt"
+		prompt.ObjectText = TutorialConfig.NPC_DISPLAY_NAME or "Sir Nattos"
+		prompt.ActionText = TutorialConfig.PROMPT_ACTION_TEXT or "Ngobrol"
+		prompt.KeyboardKeyCode = Enum.KeyCode.E
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = TutorialConfig.CONVERSATION_DISTANCE or 14
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = head
+	end
+
+	prompt.Triggered:Connect(function(player)
+		if activeSessions[player] then
+			return
 		end
-	end
-
-	if not choiceTutorial then
-		choiceTutorial = Instance.new("DialogChoice")
-		choiceTutorial.Name = "StartTutorial"
-		choiceTutorial.UserDialog = TutorialConfig.CHOICE_TUTORIAL_USER
-		choiceTutorial.ResponseDialog = TutorialConfig.CHOICE_TUTORIAL_RESPONSE
-		choiceTutorial.Parent = dialog
-	end
-
-	local choiceAbout = dialog:FindFirstChild("AboutSirNattos")
-	if not choiceAbout then
-		choiceAbout = Instance.new("DialogChoice")
-		choiceAbout.Name = "AboutSirNattos"
-		choiceAbout.UserDialog = TutorialConfig.CHOICE_ABOUT_USER
-		choiceAbout.ResponseDialog = TutorialConfig.CHOICE_ABOUT_RESPONSE
-		choiceAbout.Parent = dialog
-	end
-
-	dialog.DialogChoiceSelected:Connect(function(player, choice)
-		if
-			choice == choiceTutorial
-			or choice.Name == "StartTutorial"
-			or string.find(string.lower(choice.UserDialog), "latihan")
-			or string.find(string.lower(choice.UserDialog), "tarung")
-		then
-			print("[TutorialService] " .. player.Name .. " memulai tutorial via dialog Sir Nattos")
-			task.wait(1.5)
-			TutorialBattleService.start(player)
+		local ps = getState(player)
+		if not ps or ps.isPlaying or ps.isInMatchmaking then
+			return
 		end
+		RemoteSafety.fire(promptEvent, player, "openLobbyDialog")
 	end)
 
-	print("[TutorialService] Dialog Sir Nattos berhasil dipasang.")
+	print("[TutorialService] ProximityPrompt Sir Nattos berhasil dipasang.")
 end
 
 local function initSirNattosDetection()
@@ -727,7 +699,6 @@ function TutorialBattleService.init()
 			end
 		elseif kind == "startTutorial" then
 			print("[TutorialBattleService] Request startTutorial diterima dari client " .. player.Name)
-			task.wait(1.5) -- Beri waktu pemain membaca respon chat bubble Sir Nattos
 			TutorialBattleService.start(player)
 		end
 	end)
