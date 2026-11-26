@@ -18,6 +18,7 @@ ShopConfig.TEMPLATE_FOLDER_PATH = { "Templates", "Pillows" }
 ShopConfig.PILLOWS = {
 	{
 		id = "basic_pillow",
+		cardName = "ItemCard1",
 		name = "BASIC PILLOW",
 		description = "Bantal standar andalan setiap petarung.",
 		icon = "rbxassetid://0", -- Ganti dengan ID gambar icon kamu
@@ -29,6 +30,7 @@ ShopConfig.PILLOWS = {
 	},
 	{
 		id = "cloud_pillow",
+		cardName = "ItemCard2",
 		name = "CLOUD PILLOW",
 		description = "Ringan dan empuk seperti awan.",
 		icon = "rbxassetid://0",
@@ -41,6 +43,7 @@ ShopConfig.PILLOWS = {
 	},
 	{
 		id = "royal_pillow",
+		cardName = "ItemCard3",
 		name = "ROYAL PILLOW",
 		description = "Bantal mewah berlapis emas kerajaan.",
 		icon = "rbxassetid://0",
@@ -53,6 +56,7 @@ ShopConfig.PILLOWS = {
 	},
 	{
 		id = "shadow_pillow",
+		cardName = "ItemCard4",
 		name = "SHADOW PILLOW",
 		description = "Gelap, misterius, tapi tetap empuk.",
 		icon = "rbxassetid://0",

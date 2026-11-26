@@ -2,9 +2,9 @@
 --[[
     Nama File  : ShopClient.client.luau
     Layer      : Client (UI)
-    Deskripsi  : Mengelola tampilan dinamis ShopPage dari ShopConfig, pembelian via
-                 Coins (ShopActionEvent) maupun Robux (MarketplaceService), serta
-                 sinkronisasi status kepemilikan dari SyncInventoryEvent.
+    Deskripsi  : Menghubungkan card UI ShopPage yang sudah ada (ItemCard1..N & StarterBundle)
+                 dengan backend ShopService via ShopActionEvent & SyncInventoryEvent,
+                 tanpa mengubah/menghapus tampilan placeholder asli di Studio.
 ]]
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -34,7 +34,7 @@ if legacyController and legacyController:IsA("LocalScript") then
 end
 
 local ownedSet = { [ShopConfig.DEFAULT_PILLOW_ID] = true }
-local cardRefs = {} -- [itemId] = { coinBtn, robuxBtn, ownedLabel, coinPrice }
+local cardBindings = {}
 
 local toastLabel = Instance.new("TextLabel")
 toastLabel.Name = "ShopToast"
@@ -71,114 +71,6 @@ local function showToast(message: string, isOk: boolean?)
 	end)
 end
 
-local function clearPlaceholderCards()
-	for _, child in ipairs(itemGridFrame:GetChildren()) do
-		if child:IsA("GuiObject") then
-			child:Destroy()
-		end
-	end
-end
-
-local function createFallbackCard(item)
-	local card = Instance.new("Frame")
-	card.Name = "Card_" .. item.id
-	card.BackgroundColor3 = Color3.fromRGB(46, 138, 42)
-	card.BorderSizePixel = 0
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.08, 0)
-	corner.Parent = card
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(18, 55, 18)
-	stroke.Thickness = 2
-	stroke.Parent = card
-
-	local aspect = Instance.new("UIAspectRatioConstraint")
-	aspect.AspectRatio = 0.85
-	aspect.Parent = card
-
-	local title = Instance.new("TextLabel")
-	title.Name = "TitleLabel"
-	title.BackgroundTransparency = 1
-	title.Position = UDim2.fromScale(0.06, 0.04)
-	title.Size = UDim2.fromScale(0.88, 0.16)
-	title.Font = Enum.Font.FredokaOne
-	title.Text = item.name
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextScaled = true
-	title.Parent = card
-
-	local icon = Instance.new("ImageLabel")
-	icon.Name = "IconImage"
-	icon.BackgroundTransparency = 1
-	icon.Position = UDim2.fromScale(0.15, 0.22)
-	icon.Size = UDim2.fromScale(0.7, 0.48)
-	icon.ScaleType = Enum.ScaleType.Fit
-	icon.Image = item.icon or "rbxassetid://0"
-	icon.Parent = card
-
-	local coinBtn = Instance.new("TextButton")
-	coinBtn.Name = "CoinButton"
-	coinBtn.Position = UDim2.fromScale(0.06, 0.74)
-	coinBtn.Size = UDim2.fromScale(0.42, 0.2)
-	coinBtn.BackgroundColor3 = Color3.fromRGB(235, 180, 40)
-	coinBtn.Font = Enum.Font.FredokaOne
-	coinBtn.TextColor3 = Color3.fromRGB(35, 25, 10)
-	coinBtn.TextScaled = true
-	coinBtn.Text = item.coinPrice and ("C " .. tostring(item.coinPrice)) or "-"
-	coinBtn.Parent = card
-
-	local coinCorner = Instance.new("UICorner")
-	coinCorner.CornerRadius = UDim.new(0.25, 0)
-	coinCorner.Parent = coinBtn
-
-	local robuxBtn = Instance.new("TextButton")
-	robuxBtn.Name = "RobuxButton"
-	robuxBtn.Position = UDim2.fromScale(0.52, 0.74)
-	robuxBtn.Size = UDim2.fromScale(0.42, 0.2)
-	robuxBtn.BackgroundColor3 = Color3.fromRGB(70, 195, 70)
-	robuxBtn.Font = Enum.Font.FredokaOne
-	robuxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	robuxBtn.TextScaled = true
-	robuxBtn.Text = item.robuxFallbackPrice and ("R$ " .. tostring(item.robuxFallbackPrice)) or "R$"
-	robuxBtn.Parent = card
-
-	local robuxCorner = Instance.new("UICorner")
-	robuxCorner.CornerRadius = UDim.new(0.25, 0)
-	robuxCorner.Parent = robuxBtn
-
-	local ownedLabel = Instance.new("TextLabel")
-	ownedLabel.Name = "OwnedLabel"
-	ownedLabel.Position = UDim2.fromScale(0.08, 0.74)
-	ownedLabel.Size = UDim2.fromScale(0.84, 0.2)
-	ownedLabel.BackgroundColor3 = Color3.fromRGB(30, 85, 30)
-	ownedLabel.Font = Enum.Font.FredokaOne
-	ownedLabel.Text = "OWNED"
-	ownedLabel.TextColor3 = Color3.fromRGB(210, 255, 200)
-	ownedLabel.TextScaled = true
-	ownedLabel.Visible = false
-	ownedLabel.Parent = card
-
-	local ownedCorner = Instance.new("UICorner")
-	ownedCorner.CornerRadius = UDim.new(0.25, 0)
-	ownedCorner.Parent = ownedLabel
-
-	return card
-end
-
-local function setButtonLabel(button: GuiObject?, text: string)
-	if not button then
-		return
-	end
-	local priceLabel = button:FindFirstChild("PriceLabel")
-	if priceLabel and priceLabel:IsA("TextLabel") then
-		priceLabel.Text = text
-	elseif button:IsA("TextButton") then
-		button.Text = text
-	end
-end
-
 local function promptRobuxItem(item)
 	if item.gamePassId and item.gamePassId > 0 then
 		MarketplaceService:PromptGamePassPurchase(player, item.gamePassId)
@@ -189,96 +81,97 @@ local function promptRobuxItem(item)
 	end
 end
 
-local function buildCards()
-	clearPlaceholderCards()
+local function handleCardClick(item)
+	if ownedSet[item.id] then
+		showToast(item.name .. " sudah kamu miliki.", true)
+		return
+	end
 
-	local templatesFolder = ReplicatedStorage:FindFirstChild("Templates")
-	local cardTemplate = templatesFolder and templatesFolder:FindFirstChild("ShopCardTemplate")
+	if type(item.coinPrice) == "number" and item.coinPrice > 0 then
+		ShopActionEvent:FireServer("buy_coin", item.id)
+	else
+		promptRobuxItem(item)
+	end
+end
 
+local function ensureOwnedBadge(card: GuiObject): TextLabel
+	local existing = card:FindFirstChild("OwnedBadge")
+	if existing and existing:IsA("TextLabel") then
+		return existing
+	end
+
+	local badge = Instance.new("TextLabel")
+	badge.Name = "OwnedBadge"
+	badge.AnchorPoint = Vector2.new(0.5, 0)
+	badge.Position = UDim2.fromScale(0.5, 0.04)
+	badge.Size = UDim2.fromScale(0.55, 0.14)
+	badge.BackgroundColor3 = Color3.fromRGB(24, 65, 24)
+	badge.BackgroundTransparency = 0.15
+	badge.Font = Enum.Font.FredokaOne
+	badge.Text = "OWNED"
+	badge.TextColor3 = Color3.fromRGB(205, 255, 195)
+	badge.TextScaled = true
+	badge.ZIndex = card.ZIndex + 2
+	badge.Visible = false
+	badge.Parent = card
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.3, 0)
+	corner.Parent = badge
+
+	return badge
+end
+
+local function bindExistingCards()
 	for index, item in ipairs(ShopConfig.PILLOWS) do
-		local card = if cardTemplate then cardTemplate:Clone() else createFallbackCard(item)
-		card.Name = "Card_" .. item.id
-		card.LayoutOrder = index
-		card.Visible = true
+		local targetName = item.cardName or ("ItemCard" .. tostring(index))
+		local card = itemGridFrame:FindFirstChild(targetName)
+		if card and card:IsA("GuiObject") then
+			local titleLabel = card:FindFirstChild("TitleLabel", true)
+			if titleLabel and titleLabel:IsA("TextLabel") then
+				titleLabel.Text = item.name
+			end
 
-		local titleLabel = card:FindFirstChild("TitleLabel", true)
-		if titleLabel and titleLabel:IsA("TextLabel") then
-			titleLabel.Text = item.name
-		end
+			local iconImage = card:FindFirstChild("IconImage", true)
+			if iconImage and iconImage:IsA("ImageLabel") and item.icon and item.icon ~= "rbxassetid://0" then
+				iconImage.Image = item.icon
+			end
 
-		local iconImage = card:FindFirstChild("IconImage", true)
-		if iconImage and iconImage:IsA("ImageLabel") then
-			iconImage.Image = item.icon or "rbxassetid://0"
-		end
+			local coinBtn = card:FindFirstChild("CoinButton", true)
+			local robuxBtn = card:FindFirstChild("RobuxButton", true)
 
-		local coinBtn = card:FindFirstChild("CoinButton", true)
-		local robuxBtn = card:FindFirstChild("RobuxButton", true)
-		local ownedLabel = card:FindFirstChild("OwnedLabel", true)
-
-		if coinBtn and coinBtn:IsA("GuiButton") then
-			if type(item.coinPrice) == "number" and item.coinPrice > 0 then
-				setButtonLabel(coinBtn, "C " .. tostring(item.coinPrice))
+			if coinBtn and coinBtn:IsA("GuiButton") then
 				coinBtn.MouseButton1Click:Connect(function()
 					ShopActionEvent:FireServer("buy_coin", item.id)
 				end)
-			else
-				coinBtn.Visible = false
 			end
-		end
-
-		if robuxBtn and robuxBtn:IsA("GuiButton") then
-			local hasRobux = (item.robuxProductId and item.robuxProductId > 0)
-				or (item.gamePassId and item.gamePassId > 0)
-				or (item.robuxFallbackPrice and item.robuxFallbackPrice > 0)
-
-			if hasRobux and not item.isDefault then
-				setButtonLabel(robuxBtn, "R$ " .. tostring(item.robuxFallbackPrice or "?"))
+			if robuxBtn and robuxBtn:IsA("GuiButton") then
 				robuxBtn.MouseButton1Click:Connect(function()
 					promptRobuxItem(item)
 				end)
-			else
-				robuxBtn.Visible = false
 			end
+
+			if card:IsA("GuiButton") then
+				card.MouseButton1Click:Connect(function()
+					handleCardClick(item)
+				end)
+			end
+
+			cardBindings[item.id] = {
+				card = card,
+				item = item,
+				badge = ensureOwnedBadge(card),
+			}
 		end
-
-		cardRefs[item.id] = {
-			coinBtn = coinBtn,
-			robuxBtn = robuxBtn,
-			ownedLabel = ownedLabel,
-			item = item,
-		}
-
-		card.Parent = itemGridFrame
 	end
 end
 
 local function refreshCardStates()
-	local currentCoins = player:GetAttribute("Coins") or 0
-
-	for itemId, ref in pairs(cardRefs) do
+	for itemId, binding in pairs(cardBindings) do
 		local isOwned = ownedSet[itemId] == true
-		local item = ref.item
-
-		if ref.ownedLabel then
-			ref.ownedLabel.Visible = isOwned
-		end
-
-		if ref.coinBtn and ref.coinBtn:IsA("GuiButton") then
-			local canBuyCoin = not isOwned and type(item.coinPrice) == "number" and item.coinPrice > 0
-			ref.coinBtn.Visible = canBuyCoin
-			if canBuyCoin then
-				local affordable = currentCoins >= item.coinPrice
-				ref.coinBtn.BackgroundColor3 = if affordable
-					then Color3.fromRGB(235, 180, 40)
-					else Color3.fromRGB(140, 125, 85)
-			end
-		end
-
-		if ref.robuxBtn and ref.robuxBtn:IsA("GuiButton") then
-			local hasRobux = (item.robuxProductId and item.robuxProductId > 0)
-				or (item.gamePassId and item.gamePassId > 0)
-				or (item.robuxFallbackPrice and item.robuxFallbackPrice > 0)
-			ref.robuxBtn.Visible = (not isOwned) and hasRobux and (not item.isDefault)
+		binding.badge.Visible = isOwned
+		if binding.card:IsA("ImageButton") or binding.card:IsA("ImageLabel") then
+			binding.card.ImageColor3 = if isOwned then Color3.fromRGB(185, 215, 185) else Color3.fromRGB(255, 255, 255)
 		end
 	end
 end
@@ -314,10 +207,8 @@ SyncInventoryEvent.OnClientEvent:Connect(function(payload)
 	end
 end)
 
-player:GetAttributeChangedSignal("Coins"):Connect(refreshCardStates)
-
-buildCards()
+bindExistingCards()
 refreshCardStates()
 ShopActionEvent:FireServer("sync", "")
 
-print("[ShopClient] Berhasil diinisialisasi.")
+print("[ShopClient] Berhasil diinisialisasi (mempertahankan card UI asli).")
