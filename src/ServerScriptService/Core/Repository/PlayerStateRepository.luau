@@ -89,6 +89,10 @@ function PlayerStateRepository.init(player)
 
 		coins = 0,
 		sessionCoinsDelta = 0,
+
+		-- Shop & Inventory
+		ownedPillows = { basic_pillow = true },
+		equippedPillow = "basic_pillow",
 	}
 
 	print("[PlayerStateRepository] ID Player" .. player.Name .. " : " .. playerId)

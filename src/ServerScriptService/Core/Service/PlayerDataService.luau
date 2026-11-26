@@ -19,6 +19,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local PlayerStateRepository = require(ServerScriptService.Core.Repository.PlayerStateRepository)
 local StreakDisplayService = require(ServerScriptService.Core.Service.StreakDisplayService)
 local CoinService = require(ServerScriptService.Core.Service.CoinService)
+local ShopConfig = require(game:GetService("ReplicatedStorage").Configs.ShopConfig)
 
 local PlayerDataStore = DataStoreService:GetDataStore("PlayerData_v1")
 
@@ -28,7 +29,36 @@ local DEFAULT_DATA = {
 	bestWinStreak = 0,
 	totalPlayTime = 0,
 	coins = 0,
+	ownedPillows = { ShopConfig.DEFAULT_PILLOW_ID },
+	equippedPillow = ShopConfig.DEFAULT_PILLOW_ID,
 }
+
+local function arrayToOwnedSet(list)
+	local set = { [ShopConfig.DEFAULT_PILLOW_ID] = true }
+	if type(list) == "table" then
+		for _, id in ipairs(list) do
+			if type(id) == "string" and ShopConfig.getPillowById(id) then
+				set[id] = true
+			end
+		end
+	end
+	return set
+end
+
+local function ownedSetToArray(set)
+	local arr = {}
+	if type(set) == "table" then
+		for id, owned in pairs(set) do
+			if owned == true and type(id) == "string" then
+				table.insert(arr, id)
+			end
+		end
+	end
+	if not table.find(arr, ShopConfig.DEFAULT_PILLOW_ID) then
+		table.insert(arr, ShopConfig.DEFAULT_PILLOW_ID)
+	end
+	return arr
+end
 
 -- Retry config buat loadData
 local LOAD_MAX_ATTEMPTS = 3
@@ -109,6 +139,14 @@ function PlayerDataService.loadData(player)
 	PlayerStateRepository.set(player, "totalPlayTime", savedData.totalPlayTime or 0)
 	PlayerStateRepository.set(player, "coins", savedData.coins or 0)
 
+	local ownedSet = arrayToOwnedSet(savedData.ownedPillows)
+	local equippedId = savedData.equippedPillow
+	if type(equippedId) ~= "string" or not ownedSet[equippedId] or not ShopConfig.getPillowById(equippedId) then
+		equippedId = ShopConfig.DEFAULT_PILLOW_ID
+	end
+	PlayerStateRepository.set(player, "ownedPillows", ownedSet)
+	PlayerStateRepository.set(player, "equippedPillow", equippedId)
+
 	StreakDisplayService.updateStreak(player, savedData.winStreak or 0)
 	CoinService.onDataLoaded(player)
 
@@ -136,12 +174,23 @@ function PlayerDataService.saveData(player)
 	local deltaCoins = state.sessionCoinsDelta or 0
 	local currentWinStreak = state.winStreak or 0
 	local currentBestStreak = state.bestWinStreak or 0
+	local sessionOwnedSet = state.ownedPillows
+	local currentEquipped = state.equippedPillow or ShopConfig.DEFAULT_PILLOW_ID
 
 	local dataKey = "Player_" .. tostring(player.UserId)
 
 	local success, err = pcall(function()
 		PlayerDataStore:UpdateAsync(dataKey, function(old)
 			old = old or DEFAULT_DATA
+			local mergedOwned = arrayToOwnedSet(old.ownedPillows)
+			if type(sessionOwnedSet) == "table" then
+				for id, owned in pairs(sessionOwnedSet) do
+					if owned == true and ShopConfig.getPillowById(id) then
+						mergedOwned[id] = true
+					end
+				end
+			end
+
 			return {
 				totalWins = (old.totalWins or 0) + deltaWins,
 				winStreak = currentWinStreak,
@@ -150,6 +199,8 @@ function PlayerDataService.saveData(player)
 				-- Delta juga (bisa minus kalau sesi ini belanja), di-clamp
 				-- biar saldo yang tersimpan gak pernah di bawah 0.
 				coins = math.max(0, (old.coins or 0) + deltaCoins),
+				ownedPillows = ownedSetToArray(mergedOwned),
+				equippedPillow = mergedOwned[currentEquipped] and currentEquipped or ShopConfig.DEFAULT_PILLOW_ID,
 			}
 		end)
 	end)

@@ -524,7 +524,34 @@ end
 -- ini, pemain yang sekali kehilangan Pillow-nya bakal main tanpa Pillow
 -- SELAMANYA sampai server restart. Makanya di sini kita clone ulang dari
 -- StarterPack begitu tool-nya gak ketemu di character maupun Backpack.
-local function getPillowTemplate(toolName)
+local ShopConfig = require(ReplicatedStorage.Configs.ShopConfig)
+
+local function findPillowFolder()
+	local serverStorage = game:GetService("ServerStorage")
+	local folder = serverStorage
+	for _, segment in ipairs(ShopConfig.TEMPLATE_FOLDER_PATH or { "Templates", "Pillows" }) do
+		folder = folder and folder:FindFirstChild(segment)
+	end
+	if folder then
+		return folder
+	end
+	return serverStorage:FindFirstChild("Pillows")
+end
+
+local function getPillowTemplate(toolName, player)
+	if player and not RemoteSafety.isBot(player) then
+		local state = PlayerStateRepository.get(player)
+		local equippedId = state and state.equippedPillow or ShopConfig.DEFAULT_PILLOW_ID
+		local item = ShopConfig.getPillowById(equippedId)
+		local folder = findPillowFolder()
+		if folder and item and item.templateName then
+			local customTemplate = folder:FindFirstChild(item.templateName)
+			if customTemplate then
+				return customTemplate
+			end
+		end
+	end
+
 	local template = StarterPack:FindFirstChild(toolName)
 	if not template then
 		warn("[ArenaService] Template tool '" .. toolName .. "' tidak ditemukan di StarterPack.")
@@ -532,7 +559,7 @@ local function getPillowTemplate(toolName)
 	return template
 end
 
-local function equipPillow(players)
+local function equipPillow(players, forceReplace)
 	local toolName = GameplayConfig.PILLOW_TOOL_NAME
 
 	for _, player in ipairs(players) do
@@ -546,17 +573,21 @@ local function equipPillow(players)
 			local backpack = RemoteSafety.isBot(player) and player.Backpack or player:FindFirstChildOfClass("Backpack")
 			local pillow = character:FindFirstChild(toolName) or (backpack and backpack:FindFirstChild(toolName))
 
+			if forceReplace and pillow then
+				humanoid:UnequipTools()
+				pillow:Destroy()
+				pillow = nil
+			end
+
 			if not pillow then
-				local template = getPillowTemplate(toolName)
+				local template = getPillowTemplate(toolName, player)
 				if template and backpack then
 					pillow = template:Clone()
+					pillow.Name = toolName
 					pillow.Parent = backpack
-					warn(
-						"[ArenaService] Pillow '"
-							.. toolName
-							.. "' hilang, di-clone ulang dari StarterPack untuk "
-							.. player.Name
-					)
+					if not forceReplace then
+						warn("[ArenaService] Pillow '" .. toolName .. "' hilang, di-clone ulang untuk " .. player.Name)
+					end
 				end
 			end
 

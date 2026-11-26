@@ -15,6 +15,7 @@ local StreakDisplayService = require(Services.StreakDisplayService) -- DITAMBAHK
 local CoinService = require(Services.CoinService)
 local TutorialBattleService = require(Services.TutorialBattleService)
 local LobbyPvPService = require(Services.LobbyPvPService)
+local ShopService = require(Services.ShopService)
 local EmojiService = require(Services.EmojiService)
 
 local PlayerStateRepository = require(Core.Repository.PlayerStateRepository)
@@ -46,6 +47,9 @@ end
 
 if LobbyPvPService.init then
 	LobbyPvPService.init()
+end
+if ShopService.init then
+	ShopService.init()
 end
 if EmojiService.init then
 	EmojiService.init()
@@ -80,6 +84,8 @@ local function handlePlayerJoined(player)
 
 	-- 2. Mulai catat waktu sesi bermain
 	LeaderboardService.onPlayerJoined(player)
+	-- 3. Sinkronisasi data Shop & Inventory ke client
+	ShopService.onDataLoaded(player)
 end
 
 local function handlePlayerLeaving(player)
@@ -93,6 +99,7 @@ local function handlePlayerLeaving(player)
 	PlayerDataService.saveData(player)
 	-- 4. Pastikan data AntiGB (suspicionCount/escalation/ban) ke-persist & cache bersih
 	PunishmentService.cleanup(player)
+	ShopService.cleanup(player)
 
 	-- 5. FIX (memory leak): hapus entry player ini dari PlayerStateRepository.
 	-- WAJIB PALING TERAKHIR -- semua langkah di atas (ArenaService, Leaderboard,
