@@ -16,7 +16,12 @@ local PunishmentService = {}
 
 local DataStoreService = game:GetService("DataStoreService")
 
-local AntiGbStore = DataStoreService:GetDataStore("AntiGB_v1")
+local okDS, AntiGbStore = pcall(function()
+	return DataStoreService:GetDataStore("AntiGB_v1")
+end)
+if not okDS then
+	AntiGbStore = nil
+end
 
 -- Cache in-memory per sesi server -- dibaca sekali saat join (PunishmentService.load),
 -- ditulis ke DataStore tiap kali berubah (bukan tiap frame), jadi jauh di
@@ -99,6 +104,9 @@ end
 --     sisi, supaya hukuman yang sudah dijatuhkan di server manapun tidak
 --     pernah sengaja "terhapus" oleh tulisan dari server lain yang belum tahu.
 local function persist(userId)
+	if not AntiGbStore then
+		return
+	end
 	local data = _cache[userId]
 	if not data then
 		return
@@ -134,6 +142,10 @@ end
 -- join (lewat Init.server.lua) sebelum fungsi lain di modul ini dipakai.
 function PunishmentService.load(player)
 	local userId = player.UserId
+	if not AntiGbStore then
+		_cache[userId] = defaultData()
+		return _cache[userId]
+	end
 	local dataKey = "AntiGB_" .. tostring(userId)
 
 	local success, result = pcall(function()

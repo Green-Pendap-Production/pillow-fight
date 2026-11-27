@@ -245,11 +245,32 @@ function CombatController.startSwing(attacker, victim, actionType)
 	end
 
 	task.spawn(function()
+		local swingStartedAt = os.clock()
 		local contact = HitboxService.strike(attacker, victim, actionType)
 		VFXService.endSwingTrail(trail)
 
 		if not contact then
-			return
+			-- Di arena tutorial pemain terkunci di log (~5.6 studs); jika animasi ayunan
+			-- gagal termuat atau tidak menjangkau, selesaikan pukulan selama berada di jangkauan arena.
+			if getArenaService().isTutorialMatch(attacker) then
+				local attRoot = attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart")
+				local vicRoot = victim.Character and victim.Character:FindFirstChild("HumanoidRootPart")
+				if attRoot and vicRoot and (attRoot.Position - vicRoot.Position).Magnitude <= 10 then
+					local win = HitboxConfig.ACTIVE_WINDOW[actionType]
+					local peakDelay = win and ((win.start + win.stop) * 0.5) or 0.25
+					local excessDelay = math.max(0, os.clock() - (swingStartedAt + peakDelay))
+					contact = {
+						part = nil,
+						position = nil,
+						side = "right",
+						fallback = true,
+						hitLagCompensation = excessDelay,
+					}
+				end
+			end
+			if not contact then
+				return
+			end
 		end
 		CombatController.resolveHit(attacker, victim, actionType, contact, swingToken)
 	end)
@@ -290,7 +311,8 @@ function CombatController.resolveHit(attacker, victim, actionType, contact, swin
 	-- Validasi iframe dodge
 	local now = os.clock()
 	local lastDodge = victimState.lastDodgeTime or 0
-	local sinceDodge = now - lastDodge
+	local lagComp = (contact and contact.hitLagCompensation) or 0
+	local sinceDodge = math.max(0, (now - lagComp) - lastDodge)
 
 	if sinceDodge < GameplayConfig.DODGE_IFRAME then
 		-- Kualitas dodge diukur dari SEBERAPA DEKAT input dodge ke saat

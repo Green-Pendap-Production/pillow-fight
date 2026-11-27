@@ -36,7 +36,12 @@ local DataStoreService = game:GetService("DataStoreService")
 
 local PlayerStateRepository = require(ServerScriptService.Core.Repository.PlayerStateRepository)
 
-local RepeatOpponentStore = DataStoreService:GetDataStore("RepeatOpponent_v1")
+local okDS, RepeatOpponentStore = pcall(function()
+	return DataStoreService:GetDataStore("RepeatOpponent_v1")
+end)
+if not okDS then
+	RepeatOpponentStore = nil
+end
 
 -- Cache in-memory per sesi server, keyed per PASANGAN akun (bukan per akun).
 -- Dimuat on-demand (lazy) saat pertama kali pasangan itu benar-benar
@@ -118,6 +123,9 @@ end
 --     supaya cooldown farming yang sudah dijatuhkan di server manapun tidak
 --     sengaja "terhapus" oleh tulisan dari server lain yang belum tahu.
 local function persist(key)
+	if not RepeatOpponentStore then
+		return
+	end
 	local data = _cache[key]
 	if not data then
 		return
@@ -153,6 +161,10 @@ end
 -- (lazy load, lihat catatan cache di atas).
 local function loadPair(key)
 	if _cache[key] then
+		return _cache[key]
+	end
+	if not RepeatOpponentStore then
+		_cache[key] = defaultData()
 		return _cache[key]
 	end
 

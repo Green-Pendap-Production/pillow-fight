@@ -28,9 +28,16 @@ local StreakDisplayService = require(ServerScriptService.Core.Service.StreakDisp
 LeaderboardService.BoardUpdated = Instance.new("BindableEvent")
 
 -- ORDERED DATASTORES (Papan Peringkat Global)
-local WinsOrderedDS = DataStoreService:GetOrderedDataStore("Leaderboard_TotalWins_v1")
-local WinStreakOrderedDS = DataStoreService:GetOrderedDataStore("Leaderboard_WinStreak_v1")
-local PlayTimeOrderedDS = DataStoreService:GetOrderedDataStore("Leaderboard_PlayTime_v1")
+local function tryGetOrderedDS(name)
+	local ok, ds = pcall(function()
+		return DataStoreService:GetOrderedDataStore(name)
+	end)
+	return ok and ds or nil
+end
+
+local WinsOrderedDS = tryGetOrderedDS("Leaderboard_TotalWins_v1")
+local WinStreakOrderedDS = tryGetOrderedDS("Leaderboard_WinStreak_v1")
+local PlayTimeOrderedDS = tryGetOrderedDS("Leaderboard_PlayTime_v1")
 
 -- RAM TRACKING
 local sessionStartTimes = {}
@@ -123,11 +130,11 @@ function LeaderboardService.recordWin(player)
 	-- Update Global OrderedDataStore (Async safe)
 	-- Skip kalau ini test-client Studio (UserId negatif) -- lihat catatan
 	-- isRealPlayer() di atas kenapa ini penting.
-	if isRealPlayer(player) then
+	if isRealPlayer(player) and WinsOrderedDS then
 		task.spawn(function()
 			local success, err = pcall(function()
 				WinsOrderedDS:SetAsync(tostring(player.UserId), currentWins)
-				if isNewRecord then
+				if isNewRecord and WinStreakOrderedDS then
 					WinStreakOrderedDS:SetAsync(tostring(player.UserId), bestStreak)
 				end
 			end)
@@ -214,7 +221,7 @@ function LeaderboardService.onPlayerLeaving(player)
 	PlayerStateRepository.set(player, "sessionPlayTime", (state.sessionPlayTime or 0) + sessionDuration)
 	-- Simpan Total Waktu (dalam detik) ke OrderedDataStore -- skip kalau
 	-- test-client Studio (UserId negatif), lihat isRealPlayer() di atas.
-	if isRealPlayer(player) then
+	if isRealPlayer(player) and PlayTimeOrderedDS then
 		local success, err = pcall(function()
 			PlayTimeOrderedDS:SetAsync(tostring(player.UserId), currentTotalPlayTime)
 		end)

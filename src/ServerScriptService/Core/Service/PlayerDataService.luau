@@ -21,7 +21,12 @@ local StreakDisplayService = require(ServerScriptService.Core.Service.StreakDisp
 local CoinService = require(ServerScriptService.Core.Service.CoinService)
 local ShopConfig = require(game:GetService("ReplicatedStorage").Configs.ShopConfig)
 
-local PlayerDataStore = DataStoreService:GetDataStore("PlayerData_v1")
+local okDS, PlayerDataStore = pcall(function()
+	return DataStoreService:GetDataStore("PlayerData_v1")
+end)
+if not okDS then
+	PlayerDataStore = nil
+end
 
 local DEFAULT_DATA = {
 	totalWins = 0,
@@ -74,6 +79,19 @@ local LOAD_RETRY_WAIT = 2 -- detik jeda antar attempt
 -- ke-treat sebagai data asli".
 function PlayerDataService.loadData(player)
 	PlayerStateRepository.init(player)
+
+	if not PlayerDataStore then
+		-- Place lokal belum di-publish: jalankan mode offline dengan default state
+		PlayerStateRepository.set(player, "totalWins", DEFAULT_DATA.totalWins)
+		PlayerStateRepository.set(player, "winStreak", DEFAULT_DATA.winStreak)
+		PlayerStateRepository.set(player, "bestWinStreak", DEFAULT_DATA.bestWinStreak)
+		PlayerStateRepository.set(player, "totalPlayTime", DEFAULT_DATA.totalPlayTime)
+		PlayerStateRepository.set(player, "coins", DEFAULT_DATA.coins)
+		PlayerStateRepository.set(player, "ownedPillows", { [ShopConfig.DEFAULT_PILLOW_ID] = true })
+		PlayerStateRepository.set(player, "equippedPillow", ShopConfig.DEFAULT_PILLOW_ID)
+		CoinService.onDataLoaded(player)
+		return true
+	end
 
 	local dataKey = "Player_" .. tostring(player.UserId)
 
@@ -164,6 +182,9 @@ end
 -- winStreak tetap overwrite langsung (bukan akumulatif), bestWinStreak
 -- pakai math.max biar gak pernah turun.
 function PlayerDataService.saveData(player)
+	if not PlayerDataStore then
+		return
+	end
 	local state = PlayerStateRepository.get(player)
 	if not state then
 		return

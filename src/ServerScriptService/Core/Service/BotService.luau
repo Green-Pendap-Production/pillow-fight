@@ -87,6 +87,70 @@ end
 -- dipertahankan (tanpa skin/outfit) sesuai keputusan awal.
 local DUMMY_COLOR = Color3.fromRGB(163, 162, 165)
 
+local NOOB_YELLOW = Color3.fromRGB(245, 205, 48)
+local NOOB_BLUE = Color3.fromRGB(13, 105, 172)
+local NOOB_GREEN = Color3.fromRGB(164, 189, 71)
+
+local function applyNoobAppearance(character, displayName)
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Shirt") or child:IsA("Pants") or child:IsA("ShirtGraphic") or child:IsA("Accessory") then
+			child:Destroy()
+		end
+	end
+
+	local bodyColors = character:FindFirstChildOfClass("BodyColors")
+	if not bodyColors then
+		bodyColors = Instance.new("BodyColors")
+		bodyColors.Name = "Body Colors"
+		bodyColors.Parent = character
+	end
+	bodyColors.HeadColor3 = NOOB_YELLOW
+	bodyColors.LeftArmColor3 = NOOB_YELLOW
+	bodyColors.RightArmColor3 = NOOB_YELLOW
+	bodyColors.TorsoColor3 = NOOB_BLUE
+	bodyColors.LeftLegColor3 = NOOB_GREEN
+	bodyColors.RightLegColor3 = NOOB_GREEN
+
+	local partColors = {
+		Head = NOOB_YELLOW,
+		["Left Arm"] = NOOB_YELLOW,
+		["Right Arm"] = NOOB_YELLOW,
+		Torso = NOOB_BLUE,
+		["Left Leg"] = NOOB_GREEN,
+		["Right Leg"] = NOOB_GREEN,
+	}
+	for partName, color in pairs(partColors) do
+		local p = character:FindFirstChild(partName)
+		if p and p:IsA("BasePart") then
+			p.Color = color
+		end
+	end
+
+	local head = character:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		if not head:FindFirstChildOfClass("SpecialMesh") then
+			local headMesh = Instance.new("SpecialMesh")
+			headMesh.Name = "Mesh"
+			headMesh.MeshType = Enum.MeshType.Head
+			headMesh.Scale = Vector3.new(1.25, 1.25, 1.25)
+			headMesh.Parent = head
+		end
+		local face = head:FindFirstChild("face") or head:FindFirstChildOfClass("Decal")
+		if not face then
+			face = Instance.new("Decal")
+			face.Name = "face"
+			face.Face = Enum.NormalId.Front
+			face.Parent = head
+		end
+		face.Texture = "rbxasset://textures/face.png"
+	end
+
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if hum and displayName then
+		hum.DisplayName = displayName
+	end
+end
+
 local function buildFallbackCharacter()
 	local model = Instance.new("Model")
 
@@ -111,6 +175,12 @@ local function buildFallbackCharacter()
 	head.Color = DUMMY_COLOR
 	head.CFrame = root.CFrame * CFrame.new(0, 1.5, 0)
 	head.Parent = model
+
+	local headMesh = Instance.new("SpecialMesh")
+	headMesh.Name = "Mesh"
+	headMesh.MeshType = Enum.MeshType.Head
+	headMesh.Scale = Vector3.new(1.25, 1.25, 1.25)
+	headMesh.Parent = head
 
 	local leftArm = Instance.new("Part")
 	leftArm.Name = "Left Arm"
@@ -232,7 +302,8 @@ end
 -- taruh sementara jauh di bawah map -- ArenaService.teleportPlayersToSpawn
 -- (dan MatchmakingService.lockPlayerMovement selagi masih di antrean) yang
 -- bakal PivotTo dia ke titik yang benar begitu dibutuhkan.
-local function buildCharacter(botName, userId)
+local function buildCharacter(botName, userId, opts)
+	local useNoob = type(opts) == "table" and opts.style == "noob"
 	local template = getRigTemplate()
 	local character = template and template:Clone() or buildFallbackCharacter()
 
@@ -243,6 +314,10 @@ local function buildCharacter(botName, userId)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.RigType = Enum.HumanoidRigType.R6
+	end
+
+	if useNoob then
+		applyNoobAppearance(character, opts.displayName or botName)
 	end
 
 	character.Name = botName .. "_" .. tostring(userId)
@@ -257,11 +332,14 @@ end
 
 -- Buat satu bot baru & langsung daftarin state-nya ke PlayerStateRepository
 -- (bypass PlayerDataService/DataStore -- bot gak punya data permanen).
-function BotService.create()
-	local botName = BotConfig.NAMES[math.random(1, #BotConfig.NAMES)]
+function BotService.create(opts)
+	local customName = type(opts) == "table" and opts.name
+	local botName = if type(customName) == "string" and customName ~= ""
+		then customName
+		else BotConfig.NAMES[math.random(1, #BotConfig.NAMES)]
 	local userId = generateBotUserId()
 
-	local character = buildCharacter(botName, userId)
+	local character = buildCharacter(botName, userId, opts)
 
 	-- Wadah tool pengganti Backpack asli (Player.Backpack cuma ada di
 	-- Instance Player beneran) -- lihat catatan equipPillow di ArenaService.

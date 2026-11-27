@@ -59,6 +59,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 
 local attackResultEvent = remotes:WaitForChild("AttackResultEvent")
 local syncMatchStateEvent = remotes:WaitForChild("SyncMatchStateEvent")
+local matchLockEvent = remotes:WaitForChild("MatchLockEvent", 15)
 local syncOpponentEvent = remotes:WaitForChild("SyncOpponentEvent", 15)
 local localAnimEvent = script.Parent:WaitForChild("LocalAnimEvent")
 local ffylStateEvent = remotes:WaitForChild("FFYLStateEvent")
@@ -71,6 +72,7 @@ local koEvent = remotes:WaitForChild("KOEvent", 15)
 local camera = Workspace.CurrentCamera
 
 local isLocked = false
+local isMatchLocked = false
 local opponentPlayer = nil
 local smoothedCFrame = nil
 
@@ -956,7 +958,9 @@ triggerRiseBlink = function()
 		hasFallen = false
 		fallenCFrame = nil
 
-		if isLocked then
+		if not isMatchLocked then
+			setLocked(false)
+		elseif isLocked then
 			smoothedCFrame = computeLockCFrame() or camera.CFrame
 			camera.FieldOfView = LOCK.FOV or defaultFOV
 		end
@@ -984,7 +988,9 @@ triggerRiseBlink = function()
 		hasFallen = false
 		fallenCFrame = nil
 
-		if isLocked then
+		if not isMatchLocked then
+			setLocked(false)
+		elseif isLocked then
 			smoothedCFrame = computeLockCFrame() or camera.CFrame
 			camera.FieldOfView = LOCK.FOV or defaultFOV
 		end
@@ -1125,7 +1131,7 @@ local function onRenderStep(deltaTime)
 			local targetCFrame = computeLockCFrame()
 
 			if targetCFrame then
-				if smoothedCFrame then
+				if smoothedCFrame and (smoothedCFrame.Position - targetCFrame.Position).Magnitude < 50 then
 					local lerpSpeed = LOCK.SMOOTHNESS or 10
 					smoothedCFrame = smoothedCFrame:Lerp(targetCFrame, math.clamp(lerpSpeed * deltaTime, 0, 1))
 				else
@@ -1189,6 +1195,28 @@ RunService.RenderStepped:Connect(onRenderStep)
 -- EVENT LISTENERS
 -- ================================================================
 
+-- Match lock: kunci kamera sejak awal masuk arena (countdown/transisi),
+-- bukan baru saat "FIGHT!" agar pemain tidak bisa menggerakkan kamera bebas.
+if matchLockEvent then
+	matchLockEvent.OnClientEvent:Connect(function(locked)
+		isMatchLocked = locked == true
+		if isMatchLocked then
+			resetCameraEffects()
+			resetKick()
+			clearHitstop()
+			setLocked(true)
+		else
+			local isTransitioningFallen = hasFallen
+			if not isTransitioningFallen then
+				setLocked(false)
+			end
+			resetCameraEffects(isTransitioningFallen)
+			resetKick()
+			clearHitstop()
+		end
+	end)
+end
+
 -- Match state
 syncMatchStateEvent.OnClientEvent:Connect(function(isPlaying)
 	if isPlaying then
@@ -1196,15 +1224,11 @@ syncMatchStateEvent.OnClientEvent:Connect(function(isPlaying)
 		resetKick()
 		setLocked(true)
 	else
-		-- Kalau lagi mid-FALLEN_CAM/BLINK (mis. "rise" dan match-state-false
-		-- datang hampir bersamaan pas ganti ronde), jangan lepas kamera lock
-		-- sekarang. Kalau dipaksa unlock di sini, kamera langsung snap ke
-		-- kamera default SEBELUM layar sempat menghitam -- itu yang kelihatan
-		-- seperti "animasi jatuh ngeblink/glitch". Biarkan blink yang urus
-		-- transisi baliknya; kamera tetap locked selama proses itu berjalan.
+		-- Kalau match masih berjalan (countdown / jeda antar ronde),
+		-- tetap pertahankan camera lock; unlock penuh ditangani MatchLockEvent(false).
 		local isTransitioningFallen = hasFallen
 
-		if not isTransitioningFallen then
+		if not isMatchLocked and not isTransitioningFallen then
 			setLocked(false)
 		end
 
@@ -1218,7 +1242,9 @@ end)
 if syncOpponentEvent then
 	syncOpponentEvent.OnClientEvent:Connect(function(opponent)
 		opponentPlayer = opponent
-		if not opponent then
+		if opponent and isLocked then
+			smoothedCFrame = computeLockCFrame() or smoothedCFrame
+		elseif not opponent then
 			resetCameraEffects()
 		end
 	end)

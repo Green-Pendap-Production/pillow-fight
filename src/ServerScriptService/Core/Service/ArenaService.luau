@@ -1593,6 +1593,15 @@ function ArenaService.getOpponent(player)
 	return nil
 end
 
+function ArenaService.isTutorialMatch(player)
+	for _, matchInfo in pairs(activeMatches) do
+		if matchInfo.tutorial and table.find(matchInfo.players, player) then
+			return true
+		end
+	end
+	return false
+end
+
 -- Ditembak saat seorang pemain kalah FFYL (bukan kalah ronde biasa).
 -- Kedua pemain di match yang sama menerima label yang SAMA (diundi di sini,
 -- server), supaya teks KO yang tampil di layar mereka identik.

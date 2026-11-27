@@ -2,13 +2,14 @@
 --[[
 	Nama File : TutorialConfig
 	Layer     : Config (shared)
-	Deskripsi : Konfigurasi NPC tutorial (Sir Nattos) dan dialog di lobby.
+	Deskripsi : Konfigurasi NPC tutorial (Mr. Noob) dan dialog di lobby.
 ]]
 
 local TutorialConfig = {
-	-- Nama model NPC di Workspace (dicari rekursif).
-	NPC_NAME = "Sir Nattos",
-	NPC_DISPLAY_NAME = "Sir Nattos",
+	-- Nama model NPC di Workspace (dicari rekursif, termasuk alias lama).
+	NPC_NAME = "Mr. Noob",
+	NPC_ALIASES = { "Mr. Noob", "Sir Nattos" },
+	NPC_DISPLAY_NAME = "Mr. Noob",
 	CONVERSATION_DISTANCE = 14,
 	PROMPT_ACTION_TEXT = "Ngobrol",
 
@@ -20,8 +21,8 @@ local TutorialConfig = {
 		start = {
 			speaker = "npc",
 			focus = "npc",
-			choiceFocus = "player",
-			text = "Mau pemanasan dulu sebelum masuk arena?",
+			choiceFocus = "both",
+			text = "Mau pemanasan dulu lawan aku sebelum masuk arena?",
 			choices = {
 				{ id = "tutorial", text = "Ayo, ajarin aku.", nextNode = "accept" },
 				{ id = "about", text = "Kamu siapa?", nextNode = "about" },
@@ -31,7 +32,7 @@ local TutorialConfig = {
 		about = {
 			speaker = "npc",
 			focus = "npc",
-			text = "Aku Sir Nattos, pelatih di sini. Kalau baru main, mending latihan sebentar biar gak langsung tumbang.",
+			text = "Aku Mr. Noob, pelatih di sini. Kalau baru main, mending spar dulu lawan aku biar gak langsung tumbang.",
 			nextNode = "about_reply",
 		},
 		about_reply = {
@@ -43,8 +44,8 @@ local TutorialConfig = {
 		about_confirm = {
 			speaker = "npc",
 			focus = "npc",
-			choiceFocus = "player",
-			text = "Sebentar aja. Pukul, menghindar, beres. Gimana?",
+			choiceFocus = "both",
+			text = "Sebentar aja. Pukul, hindar, beres. Gimana?",
 			choices = {
 				{ id = "tutorial", text = "Gas, mulai sekarang.", nextNode = "accept" },
 				{ id = "later", text = "Lain kali deh.", nextNode = "goodbye" },
@@ -52,8 +53,8 @@ local TutorialConfig = {
 		},
 		accept = {
 			speaker = "npc",
-			focus = "npc",
-			text = "Siap. Pegang bantalmu.",
+			focus = "both",
+			text = "Siap. Pegang bantalmu, hadapin aku.",
 			action = "startTutorial",
 			autoCloseDelay = 0.9,
 		},

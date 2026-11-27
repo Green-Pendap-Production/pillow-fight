@@ -2,20 +2,21 @@
 --[[
 	Nama File : TutorialPromptClient
 	Layer     : Client (UI)
-	Deskripsi : Custom Dialogue Box (gaya cinematic 3D tanpa portrait:
-	            nama pembicara dinamis, efek ketik, pilihan opsi vertikal,
-	            kunci gerak player, & kamera bergantian fokus NPC <-> Player)
-	            + efek battle tutorial: slow-mo, screen shake, FOV punch, flash.
+	Deskripsi : UI & animasi Tutorial (Lobby Dialog Mr. Noob + Battle Coach Prompt):
+	            - Palet terbatas konsisten Pillow Fight (#47C83E, #1C5E1A, #133A10, #FFCD3C, #D94136)
+	            - Outline kartun tegas 3.5-5px + shadow padat, tanpa dots/bullets/dekorasi ramai
+	            - Dual-mode layout: Lobby (bawah-tengah + pilihan opsi) & Battle (atas-tengah bebas HUD)
+	            - Adaptif PC vs Mobile + aset ikon ForgeGUI + animasi transisi & feedback
 	Dependensi: ReplicatedStorage > Remotes > TutorialPromptEvent
 	            ReplicatedStorage > Configs > TutorialConfig
 ]]
 
+local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
-local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local promptEvent = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TutorialPromptEvent")
 local TutorialConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("TutorialConfig"))
@@ -24,16 +25,92 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local playerScripts = player:WaitForChild("PlayerScripts")
 
-local NPC_NAME = string.upper(TutorialConfig.NPC_DISPLAY_NAME or "SIR NATTOS")
--- Palet konsisten dengan UI Lobby (CoinHud, Shop, & Lobby Buttons)
-local NPC_ACCENT = Color3.fromRGB(255, 205, 60) -- Gold (sama dengan CoinHudClient)
-local PLAYER_ACCENT = Color3.fromRGB(110, 225, 105) -- Hijau cerah (senada tombol Lobby/Shop)
-local PANEL_BG = Color3.fromRGB(20, 26, 22) -- Gelap kehijauan hangat
-local PILL_BG = Color3.fromRGB(28, 38, 30)
-local DARK_TEXT = Color3.fromRGB(32, 24, 10)
-local BTN_GREEN = Color3.fromRGB(62, 175, 58)
-local BTN_GREEN_STROKE = Color3.fromRGB(20, 62, 20)
-local TYPE_SPEED = 0.022 -- detik per huruf
+-- ================================================================
+-- PALETTE & ASSET CONFIG (5 WARNA TERBATAS PILLOW FIGHT)
+-- ================================================================
+
+local NPC_NAME = string.upper(TutorialConfig.NPC_DISPLAY_NAME or "MR. NOOB")
+
+local GREEN_MAIN = Color3.fromRGB(71, 200, 62) -- #47C83E
+local GREEN_DARK = Color3.fromRGB(28, 94, 26) -- #1C5E1A
+local GREEN_PASSIVE = Color3.fromRGB(43, 120, 40) -- #2B7828
+local OUTLINE_DARK = Color3.fromRGB(19, 58, 16) -- #133A10
+local GOLD_ACCENT = Color3.fromRGB(255, 205, 60) -- #FFCD3C
+local RED_ERROR = Color3.fromRGB(217, 65, 54) -- #D94136
+local RED_DARK = Color3.fromRGB(94, 26, 26) -- #5E1A1A
+local WHITE = Color3.fromRGB(255, 255, 255)
+
+local TYPE_SPEED = 0.022
+
+-- Aset hasil ForgeGUI yang sudah dipublish ke Roblox
+local ASSET_IDS = {
+	FRAME = "rbxassetid://83693210412537",
+	LIGHT = "rbxassetid://72653438829348",
+	HEAVY = "rbxassetid://133548976419073",
+	DODGE = "rbxassetid://140704569112328",
+}
+
+local LOBBY_POS = UDim2.fromScale(0.5, 0.94)
+local BATTLE_POS = LOBBY_POS -- Battle tetap memakai kotak dialog di bawah-tengah yang sama
+
+-- ================================================================
+-- HELPERS
+-- ================================================================
+
+local function addCorner(parent: Instance, radius: number): UICorner
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+	return c
+end
+
+local function addBorderStroke(parent: Instance, color: Color3, thickness: number): UIStroke
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = thickness
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.LineJoinMode = Enum.LineJoinMode.Round
+	s.Parent = parent
+	return s
+end
+
+local function addTextStroke(parent: Instance, color: Color3, thickness: number): UIStroke
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = thickness
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	s.LineJoinMode = Enum.LineJoinMode.Round
+	s.Parent = parent
+	return s
+end
+
+local function addSolidShadow(parent: GuiObject, radius: number, offsetY: number, zIndex: number): Frame
+	local shadow = Instance.new("Frame")
+	shadow.Name = "Shadow"
+	shadow.BackgroundColor3 = OUTLINE_DARK
+	shadow.BorderSizePixel = 0
+	shadow.Position = UDim2.fromOffset(0, offsetY)
+	shadow.Size = UDim2.fromScale(1, 1)
+	shadow.ZIndex = zIndex
+	shadow.Parent = parent
+	addCorner(shadow, radius)
+	return shadow
+end
+
+local function isTouchOnlyDevice(): boolean
+	local lastInput = UserInputService:GetLastInputType()
+	if lastInput == Enum.UserInputType.Touch then
+		return true
+	end
+	if
+		lastInput == Enum.UserInputType.MouseButton1
+		or lastInput == Enum.UserInputType.MouseMovement
+		or lastInput == Enum.UserInputType.Keyboard
+	then
+		return false
+	end
+	return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+end
 
 -- ================================================================
 -- UI CONSTRUCTION
@@ -44,151 +121,295 @@ gui.Name = "TutorialPrompt"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 60
 gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
 
--- Root container untuk Dialogue Box + Options (memudahkan positioning relatif)
 local root = Instance.new("Frame")
 root.Name = "DialogueRoot"
 root.AnchorPoint = Vector2.new(0.5, 1)
-root.Position = UDim2.fromScale(0.5, 0.94)
-root.Size = UDim2.fromScale(0.56, 0.19)
+root.Position = LOBBY_POS
+root.Size = UDim2.fromScale(0.54, 0.19)
 root.BackgroundTransparency = 1
 root.Visible = false
 root.Parent = gui
 
 local rootSizeLimit = Instance.new("UISizeConstraint")
-rootSizeLimit.MinSize = Vector2.new(380, 115)
-rootSizeLimit.MaxSize = Vector2.new(860, 180)
+rootSizeLimit.MinSize = Vector2.new(360, 118)
+rootSizeLimit.MaxSize = Vector2.new(760, 168)
 rootSizeLimit.Parent = root
 
--- Main Dialogue Box (selaras dengan gaya panel & stroke Lobby/Shop)
+local boxScale = Instance.new("UIScale")
+boxScale.Parent = root
+
+-- Bayangan padat di belakang kotak utama
+addSolidShadow(root, 20, 7, 1)
+
+-- Frame luar hijau Pillow Fight (atau skin ForgeGUI saat mode normal)
 local frame = Instance.new("TextButton")
 frame.Name = "DialogueBox"
 frame.Size = UDim2.fromScale(1, 1)
-frame.BackgroundColor3 = PANEL_BG
-frame.BackgroundTransparency = 0.12
+frame.BackgroundColor3 = GREEN_MAIN
+frame.BorderSizePixel = 0
 frame.Text = ""
 frame.AutoButtonColor = false
+frame.ZIndex = 2
 frame.Parent = root
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
+addCorner(frame, 18)
+addBorderStroke(frame, OUTLINE_DARK, 4.5)
 
-local stroke = Instance.new("UIStroke")
-stroke.Color = NPC_ACCENT
-stroke.Thickness = 2.5
-stroke.Transparency = 0.15
-stroke.Parent = frame
+-- Skin 9-slice ForgeGUI (opsional; default false agar border vector seragam tajam dengan pill & pilihan)
+local frameArt = Instance.new("ImageLabel")
+frameArt.Name = "ForgeFrameArt"
+frameArt.AnchorPoint = Vector2.new(0.5, 0.5)
+frameArt.Position = UDim2.fromScale(0.5, 0.5)
+frameArt.Size = UDim2.new(1, 32, 1, 44)
+frameArt.BackgroundTransparency = 1
+frameArt.Image = ASSET_IDS.FRAME
+frameArt.ScaleType = Enum.ScaleType.Slice
+frameArt.SliceCenter = Rect.new(143, 155, 881, 382)
+frameArt.SliceScale = 0.25
+frameArt.ZIndex = 2
+frameArt.Visible = false
+frameArt.Parent = frame
 
-local boxScale = Instance.new("UIScale")
-boxScale.Parent = frame
+-- Panel dalam hijau gelap tenang (kontras tinggi untuk teks putih)
+local innerBox = Instance.new("Frame")
+innerBox.Name = "InnerBox"
+innerBox.AnchorPoint = Vector2.new(0.5, 0.5)
+innerBox.Position = UDim2.fromScale(0.5, 0.5)
+innerBox.Size = UDim2.new(1, -20, 1, -20)
+innerBox.BackgroundColor3 = GREEN_DARK
+innerBox.BorderSizePixel = 0
+innerBox.ZIndex = 3
+innerBox.Parent = frame
+addCorner(innerBox, 12)
+addBorderStroke(innerBox, OUTLINE_DARK, 3.5)
 
--- Speaker Name Pill (atas-kiri menempel di tepi atas box)
-local speakerPill = Instance.new("Frame")
-speakerPill.Name = "SpeakerPill"
-speakerPill.AnchorPoint = Vector2.new(0, 0.5)
-speakerPill.Position = UDim2.fromScale(0.03, 0)
-speakerPill.Size = UDim2.fromScale(0.32, 0.27)
-speakerPill.AutomaticSize = Enum.AutomaticSize.X
-speakerPill.BackgroundColor3 = PILL_BG
-speakerPill.Parent = frame
-Instance.new("UICorner", speakerPill).CornerRadius = UDim.new(0, 10)
+-- Speaker Pill (menempel di atas-kiri saat Lobby Dialog)
+local speakerHolder = Instance.new("Frame")
+speakerHolder.Name = "SpeakerPill"
+speakerHolder.AnchorPoint = Vector2.new(0, 0.5)
+speakerHolder.Position = UDim2.fromScale(0.03, 0)
+speakerHolder.Size = UDim2.fromOffset(148, 38)
+speakerHolder.AutomaticSize = Enum.AutomaticSize.X
+speakerHolder.BackgroundTransparency = 1
+speakerHolder.ZIndex = 6
+speakerHolder.Parent = frame
 
-local speakerStroke = Instance.new("UIStroke")
-speakerStroke.Color = NPC_ACCENT
-speakerStroke.Thickness = 2.5
-speakerStroke.Parent = speakerPill
+local speakerScale = Instance.new("UIScale")
+speakerScale.Parent = speakerHolder
+
+addSolidShadow(speakerHolder, 11, 4, 5)
+
+local speakerBg = Instance.new("Frame")
+speakerBg.Name = "Bg"
+speakerBg.Size = UDim2.fromScale(1, 1)
+speakerBg.AutomaticSize = Enum.AutomaticSize.X
+speakerBg.BackgroundColor3 = GOLD_ACCENT
+speakerBg.BorderSizePixel = 0
+speakerBg.ZIndex = 6
+speakerBg.Parent = speakerHolder
+addCorner(speakerBg, 11)
+addBorderStroke(speakerBg, OUTLINE_DARK, 4)
 
 local speakerPad = Instance.new("UIPadding")
-speakerPad.PaddingLeft = UDim.new(0, 14)
-speakerPad.PaddingRight = UDim.new(0, 14)
-speakerPad.Parent = speakerPill
+speakerPad.PaddingLeft = UDim.new(0, 16)
+speakerPad.PaddingRight = UDim.new(0, 16)
+speakerPad.Parent = speakerBg
 
-local speaker = Instance.new("TextLabel")
-speaker.BackgroundTransparency = 1
-speaker.Size = UDim2.fromScale(1, 1)
-speaker.AutomaticSize = Enum.AutomaticSize.X
-speaker.Font = Enum.Font.FredokaOne
-speaker.TextSize = 18
-speaker.TextColor3 = NPC_ACCENT
-speaker.Text = NPC_NAME
-speaker.Parent = speakerPill
+local speakerLabel = Instance.new("TextLabel")
+speakerLabel.Name = "Label"
+speakerLabel.BackgroundTransparency = 1
+speakerLabel.Size = UDim2.fromScale(0, 1)
+speakerLabel.AutomaticSize = Enum.AutomaticSize.X
+speakerLabel.Font = Enum.Font.FredokaOne
+speakerLabel.TextSize = 18
+speakerLabel.TextColor3 = OUTLINE_DARK
+speakerLabel.Text = NPC_NAME
+speakerLabel.ZIndex = 7
+speakerLabel.Parent = speakerBg
+local speakerTextStroke = addTextStroke(speakerLabel, OUTLINE_DARK, 2)
+speakerTextStroke.Enabled = false
 
--- Body Text
+-- Body Text (seimbang, bersih, outline kontekstual terbaca)
 local body = Instance.new("TextLabel")
+body.Name = "Body"
 body.BackgroundTransparency = 1
-body.Position = UDim2.fromScale(0.035, 0.22)
-body.Size = UDim2.fromScale(0.93, 0.52)
+body.Position = UDim2.fromOffset(18, 22)
+body.Size = UDim2.new(1, -36, 1, -62)
 body.Font = Enum.Font.GothamBold
 body.TextWrapped = true
 body.TextScaled = true
 body.TextXAlignment = Enum.TextXAlignment.Left
 body.TextYAlignment = Enum.TextYAlignment.Top
-body.TextColor3 = Color3.fromRGB(250, 252, 248)
+body.TextColor3 = WHITE
 body.Text = ""
-body.Parent = frame
-Instance.new("UITextSizeConstraint", body).MaxTextSize = 24
+body.ZIndex = 4
+body.Parent = innerBox
+addTextStroke(body, OUTLINE_DARK, 1.8)
+local bodyTextConstraint = Instance.new("UITextSizeConstraint")
+bodyTextConstraint.MinTextSize = 13
+bodyTextConstraint.MaxTextSize = 21
+bodyTextConstraint.Parent = body
 
--- Key Badge (untuk instruksi aksi di battle tutorial)
-local keyBadge = Instance.new("TextLabel")
-keyBadge.AnchorPoint = Vector2.new(0, 1)
-keyBadge.Position = UDim2.fromScale(0.035, 0.92)
-keyBadge.Size = UDim2.fromScale(0.14, 0.23)
-keyBadge.BackgroundColor3 = NPC_ACCENT
-keyBadge.Font = Enum.Font.FredokaOne
-keyBadge.TextSize = 18
-keyBadge.TextColor3 = DARK_TEXT
-keyBadge.Visible = false
-keyBadge.Parent = frame
-Instance.new("UICorner", keyBadge).CornerRadius = UDim.new(0, 8)
-local keyBadgeStroke = Instance.new("UIStroke")
-keyBadgeStroke.Color = Color3.fromRGB(145, 105, 15)
-keyBadgeStroke.Thickness = 2
-keyBadgeStroke.Parent = keyBadge
+-- Action Badge (kanan-bawah kotak saat Battle Mode)
+local actionBadgeHolder = Instance.new("Frame")
+actionBadgeHolder.Name = "ActionBadge"
+actionBadgeHolder.AnchorPoint = Vector2.new(1, 1)
+actionBadgeHolder.Position = UDim2.new(1, -14, 1, -10)
+actionBadgeHolder.Size = UDim2.fromOffset(0, 40)
+actionBadgeHolder.AutomaticSize = Enum.AutomaticSize.X
+actionBadgeHolder.BackgroundTransparency = 1
+actionBadgeHolder.Visible = false
+actionBadgeHolder.ZIndex = 5
+actionBadgeHolder.Parent = innerBox
+
+local badgeSizeLimit = Instance.new("UISizeConstraint")
+badgeSizeLimit.MinSize = Vector2.new(108, 40)
+badgeSizeLimit.MaxSize = Vector2.new(210, 40)
+badgeSizeLimit.Parent = actionBadgeHolder
+
 local badgeScale = Instance.new("UIScale")
-badgeScale.Parent = keyBadge
+badgeScale.Parent = actionBadgeHolder
 
--- Tombol Lanjut [E]
+addSolidShadow(actionBadgeHolder, 11, 4, 4)
+
+local actionBadgeBtn = Instance.new("Frame")
+actionBadgeBtn.Name = "Bg"
+actionBadgeBtn.Size = UDim2.fromScale(1, 1)
+actionBadgeBtn.AutomaticSize = Enum.AutomaticSize.X
+actionBadgeBtn.BackgroundColor3 = GOLD_ACCENT
+actionBadgeBtn.BorderSizePixel = 0
+actionBadgeBtn.ZIndex = 5
+actionBadgeBtn.Parent = actionBadgeHolder
+addCorner(actionBadgeBtn, 11)
+addBorderStroke(actionBadgeBtn, OUTLINE_DARK, 3.5)
+
+local badgeLayout = Instance.new("UIListLayout")
+badgeLayout.FillDirection = Enum.FillDirection.Horizontal
+badgeLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+badgeLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+badgeLayout.Padding = UDim.new(0, 8)
+badgeLayout.Parent = actionBadgeBtn
+
+local badgePad = Instance.new("UIPadding")
+badgePad.PaddingLeft = UDim.new(0, 12)
+badgePad.PaddingRight = UDim.new(0, 12)
+badgePad.Parent = actionBadgeBtn
+
+local actionIcon = Instance.new("ImageLabel")
+actionIcon.Name = "Icon"
+actionIcon.Size = UDim2.fromOffset(28, 28)
+actionIcon.BackgroundTransparency = 1
+actionIcon.ScaleType = Enum.ScaleType.Fit
+actionIcon.Visible = false
+actionIcon.ZIndex = 6
+actionIcon.Parent = actionBadgeBtn
+
+local actionText = Instance.new("TextLabel")
+actionText.Name = "Text"
+actionText.Size = UDim2.fromOffset(0, 32)
+actionText.AutomaticSize = Enum.AutomaticSize.X
+actionText.BackgroundTransparency = 1
+actionText.Font = Enum.Font.FredokaOne
+actionText.TextSize = 16
+actionText.TextColor3 = OUTLINE_DARK
+actionText.Text = "KLIK KIRI"
+actionText.ZIndex = 6
+actionText.Parent = actionBadgeBtn
+local actionTextStroke = addTextStroke(actionText, OUTLINE_DARK, 2)
+actionTextStroke.Enabled = false
+
+-- Tombol Lanjut (Lobby kanan-bawah & Battle kanan-tengah)
+local contHolder = Instance.new("Frame")
+contHolder.Name = "ContinueHolder"
+contHolder.AnchorPoint = Vector2.new(1, 1)
+contHolder.Position = UDim2.new(1, -14, 1, -10)
+contHolder.Size = UDim2.fromOffset(0, 38)
+contHolder.AutomaticSize = Enum.AutomaticSize.X
+contHolder.BackgroundTransparency = 1
+contHolder.Visible = false
+contHolder.ZIndex = 5
+contHolder.Parent = innerBox
+
+local contSizeLimit = Instance.new("UISizeConstraint")
+contSizeLimit.MinSize = Vector2.new(124, 38)
+contSizeLimit.MaxSize = Vector2.new(190, 44)
+contSizeLimit.Parent = contHolder
+
+local contScale = Instance.new("UIScale")
+contScale.Parent = contHolder
+
+addSolidShadow(contHolder, 11, 4, 4)
+
 local contBtn = Instance.new("TextButton")
-contBtn.AnchorPoint = Vector2.new(1, 1)
-contBtn.Position = UDim2.fromScale(0.97, 0.92)
-contBtn.Size = UDim2.fromScale(0.24, 0.24)
-contBtn.BackgroundColor3 = BTN_GREEN
+contBtn.Name = "ContinueBtn"
+contBtn.Size = UDim2.fromScale(1, 1)
+contBtn.AutomaticSize = Enum.AutomaticSize.X
+contBtn.BackgroundColor3 = GREEN_MAIN
+contBtn.BorderSizePixel = 0
 contBtn.AutoButtonColor = false
-contBtn.Font = Enum.Font.FredokaOne
-contBtn.TextScaled = true
-contBtn.Text = "LANJUT [E]"
-contBtn.TextColor3 = Color3.new(1, 1, 1)
-contBtn.Visible = false
-contBtn.Parent = frame
-Instance.new("UICorner", contBtn).CornerRadius = UDim.new(0, 10)
-local contStroke = Instance.new("UIStroke")
-contStroke.Color = BTN_GREEN_STROKE
-contStroke.Thickness = 2
-contStroke.Parent = contBtn
-local contGrad = Instance.new("UIGradient")
-contGrad.Rotation = 90
-contGrad.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(95, 210, 85)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 145, 42)),
-})
-contGrad.Parent = contBtn
-Instance.new("UITextSizeConstraint", contBtn).MaxTextSize = 18
+contBtn.Text = ""
+contBtn.ZIndex = 5
+contBtn.Parent = contHolder
+addCorner(contBtn, 11)
+addBorderStroke(contBtn, OUTLINE_DARK, 3.5)
 
--- Options Container (Kanan-Atas di atas Dialogue Box — gaya Genshin/Zelda)
+local contPad = Instance.new("UIPadding")
+contPad.PaddingLeft = UDim.new(0, 14)
+contPad.PaddingRight = UDim.new(0, 14)
+contPad.Parent = contBtn
+
+local contLayout = Instance.new("UIListLayout")
+contLayout.FillDirection = Enum.FillDirection.Horizontal
+contLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+contLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+contLayout.Padding = UDim.new(0, 8)
+contLayout.Parent = contBtn
+
+local contLabel = Instance.new("TextLabel")
+contLabel.BackgroundTransparency = 1
+contLabel.Size = UDim2.fromOffset(0, 26)
+contLabel.AutomaticSize = Enum.AutomaticSize.X
+contLabel.Font = Enum.Font.FredokaOne
+contLabel.TextSize = 17
+contLabel.TextColor3 = WHITE
+contLabel.Text = "LANJUT"
+contLabel.ZIndex = 6
+contLabel.Parent = contBtn
+addTextStroke(contLabel, OUTLINE_DARK, 2)
+
+local contKeycap = Instance.new("TextLabel")
+contKeycap.Name = "Keycap"
+contKeycap.Size = UDim2.fromOffset(26, 24)
+contKeycap.BackgroundColor3 = GOLD_ACCENT
+contKeycap.BorderSizePixel = 0
+contKeycap.Font = Enum.Font.FredokaOne
+contKeycap.TextSize = 14
+contKeycap.TextColor3 = OUTLINE_DARK
+contKeycap.Text = "E"
+contKeycap.ZIndex = 6
+contKeycap.Parent = contBtn
+addCorner(contKeycap, 6)
+addBorderStroke(contKeycap, OUTLINE_DARK, 2.5)
+
+-- Options Container (Kanan-Atas di atas Dialogue Box saat Lobby)
 local optionsContainer = Instance.new("Frame")
 optionsContainer.Name = "OptionsContainer"
 optionsContainer.AnchorPoint = Vector2.new(1, 1)
 optionsContainer.Position = UDim2.new(1, 0, 0, -14)
-optionsContainer.Size = UDim2.fromScale(0.46, 0)
+optionsContainer.Size = UDim2.fromScale(0.45, 0)
 optionsContainer.AutomaticSize = Enum.AutomaticSize.Y
 optionsContainer.BackgroundTransparency = 1
 optionsContainer.Visible = false
+optionsContainer.ZIndex = 5
 optionsContainer.Parent = root
 
 local optionsLayout = Instance.new("UIListLayout")
 optionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 optionsLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
 optionsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-optionsLayout.Padding = UDim.new(0, 8)
+optionsLayout.Padding = UDim.new(0, 10)
 optionsLayout.Parent = optionsContainer
 
 -- Efek layar (Slow-mo & Flash untuk battle tutorial)
@@ -198,39 +419,83 @@ colorFx.Parent = Lighting
 
 local flash = Instance.new("Frame")
 flash.Size = UDim2.fromScale(1, 1)
-flash.BackgroundColor3 = Color3.new(1, 1, 1)
+flash.BackgroundColor3 = WHITE
 flash.BackgroundTransparency = 1
 flash.BorderSizePixel = 0
 flash.ZIndex = 0
 flash.Parent = gui
 
-local SLOW_ON = { Saturation = -0.6, Contrast = 0.2, TintColor = Color3.fromRGB(170, 200, 255) }
-local SLOW_OFF = { Saturation = 0, Contrast = 0, TintColor = Color3.new(1, 1, 1) }
+local SLOW_ON = { Saturation = -0.55, Contrast = 0.16, TintColor = Color3.fromRGB(175, 205, 255) }
+local SLOW_OFF = { Saturation = 0, Contrast = 0, TintColor = WHITE }
 
 -- ================================================================
 -- STATE
 -- ================================================================
 
+local currentMode: "lobby" | "battle" = "lobby"
+local currentSpeakerKind: string? = nil
+local visToken = 0
+local visScaleTween: Tween? = nil
+local visPosTween: Tween? = nil
 local typeToken = 0
+local shakeToken = 0
 local isTyping = false
-local badgePulse
+local badgePulse: Tween? = nil
 local canContinue = false
 
 -- Lobby Dialog State
 local inLobbyDialog = false
-local currentNodeId = nil
+local currentNodeId: string? = nil
 local currentChoices = nil
 local selectedChoiceIndex = 1
 local optionButtons = {}
 local lobbySessionToken = 0
+local lobbyNodeShownAt = 0
+local choicesShownAt = 0
 
 -- Camera & Movement Lock State
-local camTween = nil
-local savedCameraType = nil
-local savedWalkSpeed = nil
-local savedJumpPower = nil
-local savedUseJumpPower = nil
+local camTween: Tween? = nil
+local charRotTween: Tween? = nil
+local savedCameraType: Enum.CameraType? = nil
+local savedWalkSpeed: number? = nil
+local savedJumpPower: number? = nil
+local savedUseJumpPower: boolean? = nil
+local savedAutoRotate: boolean? = nil
 local playerControls = nil
+
+-- Mobile Button Highlight State
+local highlightedMobileBtn: GuiObject? = nil
+local highlightedMobileTween: Tween? = nil
+
+-- ================================================================
+-- CONTINUE BUTTON HOVER / PRESS
+-- ================================================================
+
+do
+	local hovering = false
+	contBtn.MouseEnter:Connect(function()
+		hovering = true
+		TweenService:Create(contScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = 1.04,
+		}):Play()
+	end)
+	contBtn.MouseLeave:Connect(function()
+		hovering = false
+		TweenService:Create(contScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = 1,
+		}):Play()
+	end)
+	contBtn.MouseButton1Down:Connect(function()
+		TweenService:Create(contScale, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = 0.95,
+		}):Play()
+	end)
+	contBtn.MouseButton1Up:Connect(function()
+		TweenService:Create(contScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = hovering and 1.04 or 1,
+		}):Play()
+	end)
+end
 
 -- ================================================================
 -- MOVEMENT LOCK & CAMERA FOCUS (NPC <-> PLAYER)
@@ -250,7 +515,7 @@ local function getControls()
 	return playerControls
 end
 
-local function setMovementLocked(locked)
+local function setMovementLocked(locked: boolean)
 	local controls = getControls()
 	if controls then
 		if locked then
@@ -268,60 +533,144 @@ local function setMovementLocked(locked)
 				savedWalkSpeed = hum.WalkSpeed
 				savedJumpPower = hum.JumpPower
 				savedUseJumpPower = hum.UseJumpPower
+				savedAutoRotate = hum.AutoRotate
 			end
 			hum.WalkSpeed = 0
 			hum.JumpPower = 0
-		else
-			if savedWalkSpeed ~= nil then
-				hum.WalkSpeed = savedWalkSpeed
-				hum.JumpPower = savedJumpPower
-				hum.UseJumpPower = savedUseJumpPower
-				savedWalkSpeed = nil
-				savedJumpPower = nil
-				savedUseJumpPower = nil
+			hum.AutoRotate = false
+		elseif savedWalkSpeed ~= nil then
+			if charRotTween then
+				charRotTween:Cancel()
+				charRotTween = nil
 			end
+			hum.WalkSpeed = savedWalkSpeed
+			hum.JumpPower = savedJumpPower :: number
+			hum.UseJumpPower = savedUseJumpPower :: boolean
+			if savedAutoRotate ~= nil then
+				hum.AutoRotate = savedAutoRotate
+			end
+			savedWalkSpeed = nil
+			savedJumpPower = nil
+			savedUseJumpPower = nil
+			savedAutoRotate = nil
 		end
 	end
 
 	ProximityPromptService.Enabled = not locked
 end
 
-local function getSirNattosModel()
-	return workspace:FindFirstChild(TutorialConfig.NPC_NAME or "Sir Nattos", true)
+local function getCoachNpcModel(): Model?
+	local primary = TutorialConfig.NPC_NAME and workspace:FindFirstChild(TutorialConfig.NPC_NAME, true)
+	if primary and primary:IsA("Model") then
+		return primary
+	end
+	if type(TutorialConfig.NPC_ALIASES) == "table" then
+		for _, alias in ipairs(TutorialConfig.NPC_ALIASES) do
+			local found = workspace:FindFirstChild(alias, true)
+			if found and found:IsA("Model") then
+				return found
+			end
+		end
+	end
+	return nil
 end
 
-local function getFocusCFrame(targetKind)
-	local npc = getSirNattosModel()
+local function facePlayerTowardNpc()
+	local npc = getCoachNpcModel()
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local npcRoot = npc and (npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Head") or npc.PrimaryPart)
+	if not (hrp and hrp:IsA("BasePart") and npcRoot and npcRoot:IsA("BasePart")) then
+		return
+	end
+
+	local flatDir = Vector3.new(npcRoot.Position.X - hrp.Position.X, 0, npcRoot.Position.Z - hrp.Position.Z)
+	if flatDir.Magnitude < 0.05 then
+		return
+	end
+	flatDir = flatDir.Unit
+
+	local targetCF = CFrame.lookAt(hrp.Position, hrp.Position + flatDir)
+	if charRotTween then
+		charRotTween:Cancel()
+	end
+	charRotTween = TweenService:Create(
+		hrp,
+		TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = targetCF }
+	)
+	charRotTween:Play()
+end
+
+local function getFocusCFrame(targetKind: string): CFrame?
+	local npc = getCoachNpcModel()
 	local char = player.Character
 
 	local npcHead = npc and (npc:FindFirstChild("Head") or npc.PrimaryPart)
 	local playerHead = char and (char:FindFirstChild("Head") or char.PrimaryPart)
 
-	if targetKind == "npc" and npcHead then
-		-- Kamera di depan-kanan NPC menghadap wajah NPC (sedikit over-the-shoulder)
-		local lookAt = npcHead.Position - Vector3.new(0, 0.35, 0)
-		local forward = npcHead.CFrame.LookVector
-		local right = npcHead.CFrame.RightVector
-		local camPos = lookAt + forward * 5.2 + right * 1.6 + Vector3.new(0, 0.7, 0)
-		return CFrame.lookAt(camPos, lookAt)
-	elseif targetKind == "player" and playerHead then
-		-- Kamera menghadap Player (sedikit dari samping arah NPC agar terasa dialog 2 arah)
-		local lookAt = playerHead.Position - Vector3.new(0, 0.3, 0)
-		local dirToNpc = npcHead and (npcHead.Position - playerHead.Position) or playerHead.CFrame.LookVector
-		dirToNpc = Vector3.new(dirToNpc.X, 0, dirToNpc.Z)
-		if dirToNpc.Magnitude < 0.01 then
-			dirToNpc = playerHead.CFrame.LookVector
-		else
-			dirToNpc = dirToNpc.Unit
+	local pToNpc = Vector3.new(0, 0, -1)
+	if npcHead and npcHead:IsA("BasePart") and playerHead and playerHead:IsA("BasePart") then
+		local delta =
+			Vector3.new(npcHead.Position.X - playerHead.Position.X, 0, npcHead.Position.Z - playerHead.Position.Z)
+		if delta.Magnitude >= 0.05 then
+			pToNpc = delta.Unit
 		end
-		local right = dirToNpc:Cross(Vector3.yAxis)
-		local camPos = lookAt + dirToNpc * 4.8 - right * 1.8 + Vector3.new(0, 0.65, 0)
+	end
+
+	if targetKind == "npc" and npcHead and npcHead:IsA("BasePart") then
+		local lookAt = npcHead.Position - Vector3.new(0, 0.72, 0)
+		local forward = Vector3.new(npcHead.CFrame.LookVector.X, 0, npcHead.CFrame.LookVector.Z)
+		if forward.Magnitude < 0.05 then
+			forward = -pToNpc
+		else
+			forward = forward.Unit
+		end
+		local right = forward:Cross(Vector3.yAxis).Unit
+		-- Pilih sisi lateral yang tidak tertutup badan player jika player berdiri di depan NPC
+		local sideSign = 1
+		if playerHead and playerHead:IsA("BasePart") then
+			local relToNpc = playerHead.Position - npcHead.Position
+			if relToNpc:Dot(right) > 0.25 then
+				sideSign = -1
+			end
+		end
+		local camPos = lookAt + forward * 4.9 + right * (2.15 * sideSign) + Vector3.new(0, 0.85, 0)
+		return CFrame.lookAt(camPos, lookAt)
+	elseif targetKind == "player" and playerHead and playerHead:IsA("BasePart") then
+		local lookAt = playerHead.Position - Vector3.new(0, 0.65, 0)
+		local dirToNpc = pToNpc
+		if not (npcHead and npcHead:IsA("BasePart")) then
+			local flat = Vector3.new(playerHead.CFrame.LookVector.X, 0, playerHead.CFrame.LookVector.Z)
+			dirToNpc = if flat.Magnitude >= 0.05 then flat.Unit else Vector3.new(0, 0, -1)
+		end
+		local right = dirToNpc:Cross(Vector3.yAxis).Unit
+		local camPos = lookAt + dirToNpc * 4.7 - right * 1.7 + Vector3.new(0, 0.65, 0)
+		return CFrame.lookAt(camPos, lookAt)
+	elseif
+		targetKind == "both"
+		and npcHead
+		and npcHead:IsA("BasePart")
+		and playerHead
+		and playerHead:IsA("BasePart")
+	then
+		local mid = (npcHead.Position + playerHead.Position) * 0.5 - Vector3.new(0, 0.85, 0)
+		local side = pToNpc:Cross(Vector3.yAxis).Unit
+		local sep = math.clamp((npcHead.Position - playerHead.Position).Magnitude, 4.5, 13)
+		local camPos = mid - side * (sep * 0.88 + 4.2) - pToNpc * 0.9 + Vector3.new(0, 1.35, 0)
+		return CFrame.lookAt(camPos, mid)
+	elseif npcHead and npcHead:IsA("BasePart") then
+		local lookAt = npcHead.Position - Vector3.new(0, 0.72, 0)
+		local camPos = lookAt
+			+ npcHead.CFrame.LookVector * 5.0
+			+ npcHead.CFrame.RightVector * 1.9
+			+ Vector3.new(0, 0.85, 0)
 		return CFrame.lookAt(camPos, lookAt)
 	end
 	return nil
 end
 
-local function focusCameraOn(targetKind)
+local function focusCameraOn(targetKind: string)
 	local cam = workspace.CurrentCamera
 	if not cam then
 		return
@@ -341,7 +690,7 @@ local function focusCameraOn(targetKind)
 	end
 	camTween = TweenService:Create(
 		cam,
-		TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 		{ CFrame = targetCF }
 	)
 	camTween:Play()
@@ -360,21 +709,133 @@ local function restoreCamera()
 end
 
 -- ================================================================
--- TYPEWRITER & UI HELPERS
+-- MOBILE BUTTON HIGHLIGHT
 -- ================================================================
 
-local function setSpeakerStyle(speakerKind)
-	if speakerKind == "player" then
-		local displayName = string.upper(player.DisplayName or player.Name)
-		speaker.Text = displayName
-		speaker.TextColor3 = PLAYER_ACCENT
-		speakerStroke.Color = PLAYER_ACCENT
-		stroke.Color = PLAYER_ACCENT
+local MOBILE_BTN_BY_ACTION = {
+	light = "LightBtn",
+	heavy = "HeavyBtn",
+	dodge = "DodgeBtn",
+}
+
+local function clearMobileHighlight()
+	if highlightedMobileTween then
+		highlightedMobileTween:Cancel()
+		highlightedMobileTween = nil
+	end
+	if highlightedMobileBtn and highlightedMobileBtn.Parent then
+		local sc = highlightedMobileBtn:FindFirstChild("_TutHighlightScale")
+		if sc and sc:IsA("UIScale") then
+			sc.Scale = 1
+		end
+	end
+	highlightedMobileBtn = nil
+end
+
+local function setMobileHighlight(actionKind: string?)
+	clearMobileHighlight()
+	if not actionKind or not isTouchOnlyDevice() then
+		return
+	end
+	local btnName = MOBILE_BTN_BY_ACTION[actionKind]
+	if not btnName then
+		return
+	end
+	local mobileGui = playerGui:FindFirstChild("MobileBattleGui")
+	local container = mobileGui and mobileGui:FindFirstChild("ButtonContainer")
+	local btn = container and container:FindFirstChild(btnName)
+	if not btn or not btn:IsA("GuiObject") then
+		return
+	end
+
+	local sc = btn:FindFirstChild("_TutHighlightScale")
+	if not sc then
+		sc = Instance.new("UIScale")
+		sc.Name = "_TutHighlightScale"
+		sc.Parent = btn
+	end
+	if sc:IsA("UIScale") then
+		sc.Scale = 1
+		highlightedMobileBtn = btn
+		highlightedMobileTween = TweenService:Create(
+			sc,
+			TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Scale = 1.12 }
+		)
+		highlightedMobileTween:Play()
+	end
+end
+
+-- ================================================================
+-- VISUAL MODE, SPEAKER, MOOD, & ANIMATION HELPERS
+-- ================================================================
+
+local function applyMoodTheme(mood: string?)
+	local m = mood or "normal"
+	if m == "error" then
+		frame.BackgroundColor3 = RED_ERROR
+		innerBox.BackgroundColor3 = RED_DARK
 	else
-		speaker.Text = NPC_NAME
-		speaker.TextColor3 = NPC_ACCENT
-		speakerStroke.Color = NPC_ACCENT
-		stroke.Color = NPC_ACCENT
+		frame.BackgroundColor3 = GREEN_MAIN
+		innerBox.BackgroundColor3 = GREEN_DARK
+	end
+end
+
+local function configureLayoutMode(mode: "lobby" | "battle")
+	currentMode = mode
+	root.AnchorPoint = Vector2.new(0.5, 1)
+	root.Size = UDim2.fromScale(0.54, 0.19)
+	rootSizeLimit.MinSize = Vector2.new(360, 118)
+	rootSizeLimit.MaxSize = Vector2.new(760, 168)
+
+	speakerHolder.Visible = true
+	body.Position = UDim2.fromOffset(18, 22)
+	body.Size = UDim2.new(1, -36, 1, -68)
+	bodyTextConstraint.MaxTextSize = 21
+
+	contHolder.AnchorPoint = Vector2.new(1, 1)
+	contHolder.Position = UDim2.new(1, -14, 1, -10)
+	contHolder.Size = UDim2.fromOffset(0, 38)
+	contSizeLimit.MinSize = Vector2.new(124, 38)
+end
+
+local function updateBattleBodyWidth(_hasRightWidget: boolean)
+	-- Bentuk kotak battle sama persis dengan lobby; teks tetap memakai area atas yang lega
+	if currentMode ~= "battle" then
+		return
+	end
+	body.Position = UDim2.fromOffset(18, 22)
+	body.Size = UDim2.new(1, -36, 1, -68)
+	bodyTextConstraint.MaxTextSize = 21
+end
+
+local function updateContinueButtonLabels()
+	local mobile = isTouchOnlyDevice()
+	contKeycap.Visible = not mobile
+	contLabel.Text = if mobile then "TAP LANJUT" else "LANJUT"
+end
+
+local function setSpeakerStyle(speakerKind: string)
+	local changed = (currentSpeakerKind ~= speakerKind)
+	currentSpeakerKind = speakerKind
+
+	if speakerKind == "player" then
+		speakerLabel.Text = string.upper(player.DisplayName or player.Name)
+		speakerBg.BackgroundColor3 = GREEN_MAIN
+		speakerLabel.TextColor3 = WHITE
+		speakerTextStroke.Enabled = true
+	else
+		speakerLabel.Text = NPC_NAME
+		speakerBg.BackgroundColor3 = GOLD_ACCENT
+		speakerLabel.TextColor3 = OUTLINE_DARK
+		speakerTextStroke.Enabled = false
+	end
+
+	if changed and root.Visible and speakerHolder.Visible then
+		speakerScale.Scale = 1.12
+		TweenService:Create(speakerScale, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Scale = 1,
+		}):Play()
 	end
 end
 
@@ -388,33 +849,31 @@ local function clearOptions()
 end
 
 local function updateOptionHighlight()
-	for i, btn in ipairs(optionButtons) do
+	for i, holder in ipairs(optionButtons) do
 		local isSelected = (i == selectedChoiceIndex)
-		local btnStroke = btn:FindFirstChildOfClass("UIStroke")
-		local numBadge = btn:FindFirstChild("NumBadge")
-		if isSelected then
-			btn.BackgroundColor3 = Color3.fromRGB(36, 68, 38)
-			if btnStroke then
-				btnStroke.Color = PLAYER_ACCENT
-				btnStroke.Transparency = 0
-			end
-			if numBadge then
-				numBadge.BackgroundColor3 = PLAYER_ACCENT
-			end
-		else
-			btn.BackgroundColor3 = PANEL_BG
-			if btnStroke then
-				btnStroke.Color = Color3.fromRGB(75, 95, 78)
-				btnStroke.Transparency = 0.35
-			end
-			if numBadge then
-				numBadge.BackgroundColor3 = NPC_ACCENT
-			end
+		local btn = holder:FindFirstChild("Btn") :: TextButton?
+		local numBadge = btn and btn:FindFirstChild("NumBadge") :: TextLabel?
+		local btnScale = holder:FindFirstChildOfClass("UIScale")
+
+		if btn then
+			btn.BackgroundColor3 = if isSelected then GREEN_MAIN else GREEN_DARK
+			TweenService:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = if isSelected then UDim2.fromOffset(-4, 0) else UDim2.fromOffset(0, 0),
+			}):Play()
+		end
+		if numBadge then
+			numBadge.BackgroundColor3 = if isSelected then GOLD_ACCENT else GREEN_PASSIVE
+			numBadge.TextColor3 = if isSelected then OUTLINE_DARK else WHITE
+		end
+		if btnScale and not holder:GetAttribute("_Pressing") then
+			TweenService:Create(btnScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Scale = if isSelected then 1.02 else 1,
+			}):Play()
 		end
 	end
 end
 
-local function finishTypingNow()
+local function finishTypingNow(): boolean
 	if not isTyping then
 		return false
 	end
@@ -424,7 +883,7 @@ local function finishTypingNow()
 	return true
 end
 
-local function typeText(text, onFinished)
+local function typeText(text: string, onFinished: (() -> ())?)
 	typeToken += 1
 	local token = typeToken
 	isTyping = true
@@ -451,33 +910,207 @@ local function typeText(text, onFinished)
 	end)
 end
 
-local function pulseBadge()
+local function stopBadgePulse()
 	if badgePulse then
 		badgePulse:Cancel()
+		badgePulse = nil
 	end
+	badgeScale.Scale = 1
+end
+
+local function pulseBadge()
+	stopBadgePulse()
 	badgeScale.Scale = 1
 	badgePulse = TweenService:Create(
 		badgeScale,
-		TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-		{ Scale = 1.05 }
+		TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ Scale = 1.06 }
 	)
 	badgePulse:Play()
 end
 
-local function animateBoxIn()
+local function cancelVisTweens()
+	if visScaleTween then
+		visScaleTween:Cancel()
+		visScaleTween = nil
+	end
+	if visPosTween then
+		visPosTween:Cancel()
+		visPosTween = nil
+	end
+end
+
+local function animateBoxIn(mode: "lobby" | "battle")
+	visToken += 1
+	cancelVisTweens()
+	local targetPos = if mode == "lobby" then LOBBY_POS else BATTLE_POS
+	local startOffset = if mode == "lobby" then UDim2.fromOffset(0, 22) else UDim2.fromOffset(0, -18)
+
 	if not root.Visible then
 		root.Visible = true
-		boxScale.Scale = 0.92
-		root.Position = UDim2.fromScale(0.5, 1.02)
-		TweenService
-			:Create(boxScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
-			:Play()
-		TweenService:Create(
+		boxScale.Scale = 0.90
+		root.Position = targetPos + startOffset
+		visScaleTween = TweenService:Create(
+			boxScale,
+			TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Scale = 1 }
+		)
+		visPosTween = TweenService:Create(
 			root,
-			TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-			{ Position = UDim2.fromScale(0.5, 0.94) }
-		):Play()
+			TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Position = targetPos }
+		)
+		visScaleTween:Play()
+		visPosTween:Play()
+	else
+		root.Position = targetPos
+		boxScale.Scale = 1
 	end
+end
+
+local function animateBoxOut()
+	if not root.Visible then
+		return
+	end
+	visToken += 1
+	cancelVisTweens()
+	local token = visToken
+	local targetPos = if currentMode == "lobby" then LOBBY_POS else BATTLE_POS
+	local endOffset = if currentMode == "lobby" then UDim2.fromOffset(0, 18) else UDim2.fromOffset(0, -14)
+
+	visScaleTween = TweenService:Create(
+		boxScale,
+		TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Scale = 0.93 }
+	)
+	visPosTween = TweenService:Create(
+		root,
+		TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Position = targetPos + endOffset }
+	)
+	visScaleTween:Play()
+	visPosTween:Play()
+
+	task.delay(0.15, function()
+		if token == visToken then
+			root.Visible = false
+			boxScale.Scale = 1
+			root.Position = targetPos
+		end
+	end)
+end
+
+local function popBox()
+	if not root.Visible then
+		return
+	end
+	boxScale.Scale = 1.05
+	TweenService:Create(boxScale, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Scale = 1,
+	}):Play()
+end
+
+local function shakeBox()
+	if not root.Visible then
+		return
+	end
+	shakeToken += 1
+	local token = shakeToken
+	local basePos = if currentMode == "lobby" then LOBBY_POS else BATTLE_POS
+	task.spawn(function()
+		local offsets = { -6, 6, -4, 4, -2, 0 }
+		for _, dx in ipairs(offsets) do
+			if token ~= shakeToken or not root.Visible then
+				return
+			end
+			root.Position = basePos + UDim2.fromOffset(dx, 0)
+			task.wait(0.03)
+		end
+		if token == shakeToken then
+			root.Position = basePos
+		end
+	end)
+end
+
+-- ================================================================
+-- ACTION BADGE LOGIC (PC + MOBILE ADAPTIVE)
+-- ================================================================
+
+local ACTION_SPEC = {
+	light = {
+		pcText = "KLIK KIRI",
+		mobileText = "TAP BIRU",
+		icon = ASSET_IDS.LIGHT,
+		bg = GOLD_ACCENT,
+		fg = OUTLINE_DARK,
+		stroke = false,
+	},
+	heavy = {
+		pcText = "KLIK KANAN",
+		mobileText = "TAP MERAH",
+		icon = ASSET_IDS.HEAVY,
+		bg = GOLD_ACCENT,
+		fg = OUTLINE_DARK,
+		stroke = false,
+	},
+	dodge = {
+		pcText = "TEKAN Q",
+		mobileText = "TAP KUNING",
+		icon = ASSET_IDS.DODGE,
+		bg = GOLD_ACCENT,
+		fg = OUTLINE_DARK,
+		stroke = false,
+	},
+}
+
+local function configureActionBadge(data): boolean
+	local actionKind = data.action
+	local keyText = data.key
+	local mood = data.mood
+
+	if mood == "reward" then
+		actionBadgeHolder.Visible = true
+		actionBadgeBtn.BackgroundColor3 = GREEN_MAIN
+		actionText.TextColor3 = WHITE
+		actionTextStroke.Enabled = true
+		actionText.Text = "MANTAP"
+		actionIcon.Visible = false
+		stopBadgePulse()
+		return true
+	end
+
+	if not actionKind and not keyText then
+		actionBadgeHolder.Visible = false
+		stopBadgePulse()
+		return false
+	end
+
+	local spec = actionKind and ACTION_SPEC[actionKind]
+	local mobile = isTouchOnlyDevice()
+	actionBadgeHolder.Visible = true
+
+	if mood == "error" then
+		actionBadgeBtn.BackgroundColor3 = RED_ERROR
+		actionText.TextColor3 = WHITE
+		actionTextStroke.Enabled = true
+	else
+		actionBadgeBtn.BackgroundColor3 = if spec then spec.bg else GOLD_ACCENT
+		actionText.TextColor3 = if spec then spec.fg else OUTLINE_DARK
+		actionTextStroke.Enabled = if spec then spec.stroke else false
+	end
+
+	if spec then
+		actionText.Text = if mobile then spec.mobileText else spec.pcText
+		local hasIcon = (not mobile) and type(spec.icon) == "string" and spec.icon ~= ""
+		actionIcon.Image = if hasIcon then spec.icon else ""
+		actionIcon.Visible = hasIcon
+	else
+		actionText.Text = string.upper(tostring(keyText))
+		actionIcon.Visible = false
+	end
+
+	pulseBadge()
+	return true
 end
 
 -- ================================================================
@@ -486,16 +1119,17 @@ end
 
 local showLobbyNode -- forward declaration
 
-local function closeLobbyDialog(triggerAction)
+local function closeLobbyDialog(triggerAction: string?)
 	inLobbyDialog = false
 	lobbySessionToken += 1
 	currentNodeId = nil
 	clearOptions()
+	clearMobileHighlight()
 	typeToken += 1
 	isTyping = false
 	canContinue = false
-	contBtn.Visible = false
-	root.Visible = false
+	contHolder.Visible = false
+	animateBoxOut()
 
 	restoreCamera()
 	setMovementLocked(false)
@@ -505,7 +1139,7 @@ local function closeLobbyDialog(triggerAction)
 	end
 end
 
-local function selectChoice(index)
+local function selectChoice(index: number)
 	if not inLobbyDialog or not currentChoices then
 		return
 	end
@@ -529,66 +1163,100 @@ local function renderChoices(choices)
 	clearOptions()
 	currentChoices = choices
 	selectedChoiceIndex = 1
+	local token = lobbySessionToken
 
 	for i, choice in ipairs(choices) do
+		local holder = Instance.new("Frame")
+		holder.Name = "Option_" .. i
+		holder.LayoutOrder = i
+		holder.Size = UDim2.new(1, 0, 0, 46)
+		holder.BackgroundTransparency = 1
+		holder.ZIndex = 5
+		holder.Parent = optionsContainer
+
+		local optScale = Instance.new("UIScale")
+		optScale.Scale = 0.92
+		optScale.Parent = holder
+
+		addSolidShadow(holder, 12, 4, 4)
+
 		local btn = Instance.new("TextButton")
-		btn.Name = "Option_" .. i
-		btn.LayoutOrder = i
-		btn.Size = UDim2.new(1, 0, 0, 44)
-		btn.BackgroundColor3 = PANEL_BG
-		btn.BackgroundTransparency = 0.08
+		btn.Name = "Btn"
+		btn.Size = UDim2.fromScale(1, 1)
+		btn.BackgroundColor3 = GREEN_DARK
+		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
 		btn.Text = ""
-		btn.Parent = optionsContainer
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
-
-		local btnStroke = Instance.new("UIStroke")
-		btnStroke.Thickness = 2.5
-		btnStroke.Color = Color3.fromRGB(75, 95, 78)
-		btnStroke.Transparency = 0.35
-		btnStroke.Parent = btn
+		btn.ZIndex = 5
+		btn.Parent = holder
+		addCorner(btn, 12)
+		addBorderStroke(btn, OUTLINE_DARK, 4)
 
 		local numBadge = Instance.new("TextLabel")
 		numBadge.Name = "NumBadge"
 		numBadge.AnchorPoint = Vector2.new(0, 0.5)
 		numBadge.Position = UDim2.new(0, 10, 0.5, 0)
-		numBadge.Size = UDim2.fromOffset(26, 26)
-		numBadge.BackgroundColor3 = NPC_ACCENT
+		numBadge.Size = UDim2.fromOffset(28, 28)
+		numBadge.BackgroundColor3 = GREEN_PASSIVE
+		numBadge.BorderSizePixel = 0
 		numBadge.Font = Enum.Font.FredokaOne
 		numBadge.TextSize = 15
-		numBadge.TextColor3 = DARK_TEXT
+		numBadge.TextColor3 = WHITE
 		numBadge.Text = tostring(i)
+		numBadge.ZIndex = 6
 		numBadge.Parent = btn
-		Instance.new("UICorner", numBadge).CornerRadius = UDim.new(0, 7)
+		addCorner(numBadge, 8)
+		addBorderStroke(numBadge, OUTLINE_DARK, 3)
 
 		local label = Instance.new("TextLabel")
 		label.BackgroundTransparency = 1
-		label.Position = UDim2.fromOffset(44, 0)
-		label.Size = UDim2.new(1, -54, 1, 0)
+		label.Position = UDim2.fromOffset(48, 0)
+		label.Size = UDim2.new(1, -58, 1, 0)
 		label.Font = Enum.Font.GothamBold
-		label.TextSize = 15
+		label.TextSize = 16
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.TextTruncate = Enum.TextTruncate.AtEnd
-		label.TextColor3 = Color3.fromRGB(250, 252, 248)
+		label.TextColor3 = WHITE
 		label.Text = choice.text or ""
+		label.ZIndex = 6
 		label.Parent = btn
+		addTextStroke(label, OUTLINE_DARK, 1.8)
 
 		btn.MouseEnter:Connect(function()
 			selectedChoiceIndex = i
+			updateOptionHighlight()
+		end)
+		btn.MouseButton1Down:Connect(function()
+			holder:SetAttribute("_Pressing", true)
+			TweenService:Create(optScale, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Scale = 0.96,
+			}):Play()
+		end)
+		btn.MouseButton1Up:Connect(function()
+			holder:SetAttribute("_Pressing", nil)
 			updateOptionHighlight()
 		end)
 		btn.Activated:Connect(function()
 			selectChoice(i)
 		end)
 
-		table.insert(optionButtons, btn)
+		table.insert(optionButtons, holder)
+
+		-- Staggered pop-in
+		task.delay((i - 1) * 0.035, function()
+			if token == lobbySessionToken and holder.Parent then
+				TweenService:Create(optScale, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+					Scale = if i == selectedChoiceIndex then 1.02 else 1,
+				}):Play()
+			end
+		end)
 	end
 
 	updateOptionHighlight()
 	optionsContainer.Visible = true
 end
 
-showLobbyNode = function(nodeId)
+showLobbyNode = function(nodeId: string)
 	local dialogTree = TutorialConfig.LOBBY_DIALOG
 	local node = dialogTree and dialogTree[nodeId]
 	if not node then
@@ -597,13 +1265,19 @@ showLobbyNode = function(nodeId)
 	end
 
 	currentNodeId = nodeId
+	lobbyNodeShownAt = os.clock()
+	choicesShownAt = 0
 	local token = lobbySessionToken
 	clearOptions()
-	keyBadge.Visible = false
+	clearMobileHighlight()
+	actionBadgeHolder.Visible = false
+	stopBadgePulse()
 	canContinue = false
-	contBtn.Visible = false
+	contHolder.Visible = false
 
-	animateBoxIn()
+	configureLayoutMode("lobby")
+	applyMoodTheme("normal")
+	animateBoxIn("lobby")
 	setSpeakerStyle(node.speaker or "npc")
 	focusCameraOn(node.focus or node.speaker or "npc")
 
@@ -615,6 +1289,7 @@ showLobbyNode = function(nodeId)
 			if node.choiceFocus then
 				focusCameraOn(node.choiceFocus)
 			end
+			choicesShownAt = os.clock()
 			renderChoices(node.choices)
 		elseif node.autoCloseDelay then
 			task.delay(node.autoCloseDelay, function()
@@ -624,7 +1299,8 @@ showLobbyNode = function(nodeId)
 			end)
 		else
 			canContinue = true
-			contBtn.Visible = true
+			updateContinueButtonLabels()
+			contHolder.Visible = true
 		end
 	end
 
@@ -638,39 +1314,48 @@ local function openLobbyDialog()
 	inLobbyDialog = true
 	lobbySessionToken += 1
 	setMovementLocked(true)
+	facePlayerTowardNpc()
 	showLobbyNode("start")
 end
 
 -- ================================================================
--- BATTLE TUTORIAL PROMPT (BACKWARD COMPATIBLE)
+-- BATTLE TUTORIAL PROMPT
 -- ================================================================
 
 local function showPrompt(data)
-	-- Jika dialog lobby masih terbuka saat battle mulai, pastikan bersih
 	if inLobbyDialog then
 		closeLobbyDialog()
 	end
 
 	data = data or {}
-	animateBoxIn()
+	configureLayoutMode("battle")
+	applyMoodTheme(data.mood)
 	clearOptions()
+	animateBoxIn("battle")
 	setSpeakerStyle(data.speaker or "npc")
 
-	typeText(data.text or "")
+	canContinue = data.cont == true
+	updateContinueButtonLabels()
+	contHolder.Visible = canContinue
 
-	if data.key then
-		keyBadge.Text = data.key
-		keyBadge.Visible = true
-		pulseBadge()
+	local hasBadge = false
+	if not canContinue then
+		hasBadge = configureActionBadge(data)
 	else
-		keyBadge.Visible = false
-		if badgePulse then
-			badgePulse:Cancel()
-		end
+		actionBadgeHolder.Visible = false
+		stopBadgePulse()
 	end
 
-	canContinue = data.cont == true
-	contBtn.Visible = canContinue
+	updateBattleBodyWidth(canContinue or hasBadge)
+	setMobileHighlight(if not canContinue then data.action else nil)
+
+	if data.mood == "reward" then
+		popBox()
+	elseif data.mood == "error" then
+		shakeBox()
+	end
+
+	typeText(data.text or "")
 end
 
 local function hidePrompt()
@@ -678,10 +1363,11 @@ local function hidePrompt()
 	isTyping = false
 	canContinue = false
 	clearOptions()
-	if badgePulse then
-		badgePulse:Cancel()
-	end
-	root.Visible = false
+	clearMobileHighlight()
+	stopBadgePulse()
+	contHolder.Visible = false
+	actionBadgeHolder.Visible = false
+	animateBoxOut()
 end
 
 local function handleContinueAction()
@@ -693,7 +1379,6 @@ local function handleContinueAction()
 		end
 
 		if finishTypingNow() then
-			-- Teks selesai di-skip; tampilkan opsi atau tombol lanjut
 			if node.choices and #node.choices > 0 then
 				if node.choiceFocus then
 					focusCameraOn(node.choiceFocus)
@@ -701,7 +1386,8 @@ local function handleContinueAction()
 				renderChoices(node.choices)
 			elseif node.nextNode then
 				canContinue = true
-				contBtn.Visible = true
+				updateContinueButtonLabels()
+				contHolder.Visible = true
 			elseif node.autoCloseDelay then
 				closeLobbyDialog(node.action)
 			end
@@ -710,7 +1396,7 @@ local function handleContinueAction()
 
 		if canContinue and node.nextNode then
 			canContinue = false
-			contBtn.Visible = false
+			contHolder.Visible = false
 			showLobbyNode(node.nextNode)
 		elseif canContinue then
 			closeLobbyDialog(node.action)
@@ -718,12 +1404,11 @@ local function handleContinueAction()
 		return
 	end
 
-	-- Battle tutorial continue
 	if not canContinue then
 		return
 	end
 	canContinue = false
-	contBtn.Visible = false
+	contHolder.Visible = false
 	promptEvent:FireServer("continue")
 end
 
@@ -733,6 +1418,8 @@ frame.Activated:Connect(function()
 		if currentChoices and not isTyping then
 			return
 		end
+		handleContinueAction()
+	elseif canContinue then
 		handleContinueAction()
 	end
 end)
@@ -750,6 +1437,7 @@ local NUMBER_KEYS = {
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if inLobbyDialog then
+		local now = os.clock()
 		if currentChoices and #optionButtons > 0 and not isTyping then
 			local num = NUMBER_KEYS[input.KeyCode]
 			if num and num <= #optionButtons then
@@ -765,16 +1453,26 @@ UserInputService.InputBegan:Connect(function(input, processed)
 				updateOptionHighlight()
 				return
 			elseif
-				input.KeyCode == Enum.KeyCode.E
-				or input.KeyCode == Enum.KeyCode.Return
-				or input.KeyCode == Enum.KeyCode.Space
+				(now - choicesShownAt >= 0.28)
+				and (
+					input.KeyCode == Enum.KeyCode.Return
+					or input.KeyCode == Enum.KeyCode.Space
+					or (not processed and input.KeyCode == Enum.KeyCode.E)
+				)
 			then
 				selectChoice(selectedChoiceIndex)
 				return
 			end
 		end
 
-		if input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.Space then
+		if
+			(now - lobbyNodeShownAt >= 0.28)
+			and (
+				input.KeyCode == Enum.KeyCode.Space
+				or input.KeyCode == Enum.KeyCode.Return
+				or (not processed and input.KeyCode == Enum.KeyCode.E)
+			)
+		then
 			handleContinueAction()
 		end
 		return
@@ -792,7 +1490,7 @@ end)
 -- BATTLE TUTORIAL VFX
 -- ================================================================
 
-local function shake(strength, duration)
+local function shakeCamera(strength: number, duration: number)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum then
@@ -812,44 +1510,49 @@ local function shake(strength, duration)
 	end)
 end
 
-local function fovPunch(amount, duration)
+local function fovPunch(amount: number, duration: number)
 	local cam = workspace.CurrentCamera
 	if not cam then
 		return
 	end
 	local base = cam.FieldOfView
 	cam.FieldOfView = base + amount
-	TweenService
-		:Create(cam, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = base })
-		:Play()
+	TweenService:Create(cam, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		FieldOfView = base,
+	}):Play()
 end
 
-local function doFlash(color, alpha, duration)
+local function doFlash(color: Color3, alpha: number, duration: number)
 	flash.BackgroundColor3 = color
 	flash.BackgroundTransparency = alpha
 	TweenService:Create(flash, TweenInfo.new(duration), { BackgroundTransparency = 1 }):Play()
 end
 
-local function playFx(kind)
+local function playFx(kind: string)
 	if kind == "hit" then
-		shake(0.6, 0.18)
+		shakeCamera(0.6, 0.18)
 		fovPunch(-4, 0.2)
+		popBox()
 	elseif kind == "heavy" then
-		shake(1.4, 0.35)
+		shakeCamera(1.4, 0.35)
 		fovPunch(-8, 0.3)
-		doFlash(Color3.new(1, 1, 1), 0.7, 0.25)
+		doFlash(WHITE, 0.7, 0.25)
+		popBox()
 	elseif kind == "good" then
 		fovPunch(-5, 0.25)
 		doFlash(Color3.fromRGB(120, 255, 170), 0.8, 0.35)
+		popBox()
 	elseif kind == "bad" then
-		shake(1.0, 0.3)
-		doFlash(Color3.fromRGB(255, 70, 70), 0.65, 0.4)
+		shakeCamera(1.0, 0.3)
+		doFlash(RED_ERROR, 0.68, 0.4)
+		shakeBox()
 	elseif kind == "telegraph" then
 		fovPunch(6, 0.35)
-		doFlash(Color3.fromRGB(255, 80, 80), 0.85, 0.3)
+		doFlash(RED_ERROR, 0.86, 0.3)
 	elseif kind == "win" then
-		shake(0.8, 0.4)
-		doFlash(Color3.fromRGB(255, 220, 120), 0.6, 0.6)
+		shakeCamera(0.8, 0.4)
+		doFlash(GOLD_ACCENT, 0.65, 0.6)
+		popBox()
 	end
 end
 
