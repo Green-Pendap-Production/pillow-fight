@@ -38,7 +38,7 @@ ShopConfig.PILLOWS = {
 		coinPrice = 150,
 		robuxProductId = nil,
 		robuxFallbackPrice = 49,
-		gamePassId = 2099904461,
+		gamePassId = 2099071224,
 		isDefault = false,
 	},
 	{
@@ -51,7 +51,7 @@ ShopConfig.PILLOWS = {
 		coinPrice = 300,
 		robuxProductId = nil,
 		robuxFallbackPrice = 79,
-		gamePassId = 2099112496,
+		gamePassId = 2102316295,
 		isDefault = false,
 	},
 	{
@@ -64,7 +64,7 @@ ShopConfig.PILLOWS = {
 		coinPrice = 450,
 		robuxProductId = nil,
 		robuxFallbackPrice = 99,
-		gamePassId = 2100288471,
+		gamePassId = 2099851125,
 		isDefault = false,
 	},
 	{
@@ -77,7 +77,7 @@ ShopConfig.PILLOWS = {
 		coinPrice = 650,
 		robuxProductId = nil,
 		robuxFallbackPrice = 129,
-		gamePassId = 2099664429,
+		gamePassId = 2098183202,
 		isDefault = false,
 	},
 }
