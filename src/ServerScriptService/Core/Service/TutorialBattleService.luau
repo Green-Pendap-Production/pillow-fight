@@ -51,13 +51,13 @@ local CONFIG = {
 	IDLE_RESET_SECONDS = 10, -- player diam segini lama di mode FREE -> HP kedua pihak di-reset
 }
 
--- Teks Coach (galak tapi lucu). Nilai berupa list = dipilih acak. Edit sesuka hati.
+-- Teks Coach (galak tapi lucu, POV Mr. Noob vs Player). Nilai berupa list = dipilih acak. Edit sesuka hati.
 local LINES = {
-	attackIntro = "Itu lawanmu. Klik kiri buat mukul.",
+	attackIntro = "Ayo mulai. Klik kiri buat pukul aku.",
 	attackAgain = "Sekali lagi.",
 	miss = {
 		"Angin doang itu. Deketin lagi.",
-		"Meleset. Coba lagi.",
+		"Meleset. Majuin lagi.",
 		"Kurang dekat, maju dikit.",
 	},
 	attackReward = {
@@ -69,17 +69,17 @@ local LINES = {
 
 	energy = "Perhatiin energimu. Tiap mukul butuh energi, kalau habis kamu bakal pusing.",
 
-	dodgeIntro = "Giliran dia mukul. Siapin jari di tombol Q.",
+	dodgeIntro = "Sekarang giliranku mukul. Siapin jari di tombol Q.",
 	dodgeNow = {
 		"Awas! Tekan Q!",
 		"Sekarang! Q!",
 		"Hindar! Tekan Q!",
 	},
-	dodgeAgain = "Lagi. Kali ini agak lebih cepat.",
+	dodgeAgain = "Lagi. Kali ini kuayun lebih cepat.",
 	dodgeFail = {
-		"Kena kan. Tunggu dia ayun dulu, baru Q.",
+		"Kena kan. Tunggu aku ayun dulu, baru Q.",
 		"Kecepetan atau telat tuh. Coba lagi.",
-		"Liat bantalnya pas mau kena, baru Q.",
+		"Liat bantalku pas mau kena, baru Q.",
 	},
 	dodgeReward = {
 		"Licin.",
@@ -88,24 +88,163 @@ local LINES = {
 		"Mantap, gitu cara hindarnya.",
 	},
 
-	heavyIntro = "Dia lagi kehabisan napas. Klik kanan buat pukulan berat.",
+	heavyIntro = "Aku lagi kehabisan napas. Klik kanan buat pukulan berat.",
 	heavyAgain = "Sekali lagi, yang keras.",
 	heavyReward = {
 		"Telak! Damage gede, tapi energinya juga boros.",
-		"Mantap. Pakai pas ada celah aja ya.",
+		"Mantap. Pakai pas aku lengah aja ya.",
 		"Kena telak tuh.",
 	},
 
 	idleReset = "Kok bengong? Darah kuisi lagi, ayo gerak.",
-	free = "Latihan beres. Sekarang tumbangin dia beneran.",
-	done = "Mantap, kamu udah siap. Sana buktiin di arena.",
+	free = "Latihan beres. Sekarang coba tumbangin aku beneran.",
+	done = "Mantap, kamu berhasil ngalahin aku. Sana buktiin di arena.",
 }
 
 local promptEvent
+local initialized = false
 -- Manajemen slot dinamis koordinat arena tutorial
+local BASE_OFFSET = Vector3.new(6000, 120, 0) -- Jauh dari lobby sejak slot pertama
 local SLOT_DISTANCE = 3500 -- Jarak antar arena tutorial (3500 studs saling berjauhan)
 local occupiedSlots = {} -- [slotIndex] = true
 local activeSessions = {} -- [player] = session table
+
+local NOOB_YELLOW = Color3.fromRGB(245, 205, 48)
+local NOOB_BLUE = Color3.fromRGB(13, 105, 172)
+local NOOB_GREEN = Color3.fromRGB(164, 189, 71)
+
+local function applyNoobSkinToModel(model)
+	for _, child in ipairs(model:GetChildren()) do
+		if child:IsA("Shirt") or child:IsA("Pants") or child:IsA("ShirtGraphic") or child:IsA("Accessory") then
+			child:Destroy()
+		end
+	end
+
+	local bodyColors = model:FindFirstChildOfClass("BodyColors")
+	if not bodyColors then
+		bodyColors = Instance.new("BodyColors")
+		bodyColors.Name = "Body Colors"
+		bodyColors.Parent = model
+	end
+	bodyColors.HeadColor3 = NOOB_YELLOW
+	bodyColors.LeftArmColor3 = NOOB_YELLOW
+	bodyColors.RightArmColor3 = NOOB_YELLOW
+	bodyColors.TorsoColor3 = NOOB_BLUE
+	bodyColors.LeftLegColor3 = NOOB_GREEN
+	bodyColors.RightLegColor3 = NOOB_GREEN
+
+	local yellowParts = {
+		"Head",
+		"Left Arm",
+		"Right Arm",
+		"LeftUpperArm",
+		"LeftLowerArm",
+		"LeftHand",
+		"RightUpperArm",
+		"RightLowerArm",
+		"RightHand",
+	}
+	local blueParts = { "Torso", "UpperTorso", "LowerTorso" }
+	local greenParts = {
+		"Left Leg",
+		"Right Leg",
+		"LeftUpperLeg",
+		"LeftLowerLeg",
+		"LeftFoot",
+		"RightUpperLeg",
+		"RightLowerLeg",
+		"RightFoot",
+	}
+
+	for _, name in ipairs(yellowParts) do
+		local p = model:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			p.Color = NOOB_YELLOW
+		end
+	end
+	for _, name in ipairs(blueParts) do
+		local p = model:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			p.Color = NOOB_BLUE
+		end
+	end
+	for _, name in ipairs(greenParts) do
+		local p = model:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			p.Color = NOOB_GREEN
+		end
+	end
+
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		-- Dynamic Head R15 (MeshPart dengan FaceControls) tidak cocok dengan UV Decal face.png
+		if not head:FindFirstChildOfClass("FaceControls") then
+			if head:IsA("MeshPart") then
+				head.TextureID = ""
+			end
+			local face = head:FindFirstChild("face") or head:FindFirstChildOfClass("Decal")
+			if not face then
+				face = Instance.new("Decal")
+				face.Name = "face"
+				face.Face = Enum.NormalId.Front
+				face.Parent = head
+			end
+			face.Texture = "rbxasset://textures/face.png"
+		end
+	end
+end
+
+local function ensureTutorialArenaStructure(container)
+	if container:FindFirstChild("BattleArena", true) then
+		return
+	end
+
+	local floor = Instance.new("Part")
+	floor.Name = "TutorialFloor"
+	floor.Size = Vector3.new(68, 4, 68)
+	floor.Anchored = true
+	floor.Material = Enum.Material.Grass
+	floor.Color = Color3.fromRGB(76, 152, 62)
+	floor.CFrame = CFrame.new(0, -2, 0)
+	floor.Parent = container
+
+	local trim = Instance.new("Part")
+	trim.Name = "TutorialTrim"
+	trim.Size = Vector3.new(72, 2, 72)
+	trim.Anchored = true
+	trim.Material = Enum.Material.WoodPlanks
+	trim.Color = Color3.fromRGB(162, 126, 74)
+	trim.CFrame = CFrame.new(0, -2.5, 0)
+	trim.Parent = container
+
+	local arenasFolder = Instance.new("Folder")
+	arenasFolder.Name = "Arenas"
+	arenasFolder.Parent = container
+
+	local battleArena = Instance.new("Folder")
+	battleArena.Name = "BattleArena"
+	battleArena.Parent = arenasFolder
+
+	local sp1 = Instance.new("Seat")
+	sp1.Name = "SpawnPoint1"
+	sp1.Size = Vector3.new(2, 1, 2)
+	sp1.Transparency = 1
+	sp1.Anchored = true
+	sp1.CanCollide = false
+	sp1.Disabled = false
+	sp1.CFrame = CFrame.lookAt(Vector3.new(0, 0.5, -5), Vector3.new(0, 0.5, 5))
+	sp1.Parent = battleArena
+
+	local sp2 = Instance.new("Seat")
+	sp2.Name = "SpawnPoint2"
+	sp2.Size = Vector3.new(2, 1, 2)
+	sp2.Transparency = 1
+	sp2.Anchored = true
+	sp2.CanCollide = false
+	sp2.Disabled = false
+	sp2.CFrame = CFrame.lookAt(Vector3.new(0, 0.5, 5), Vector3.new(0, 0.5, -5))
+	sp2.Parent = battleArena
+end
 
 local function acquireSlot()
 	local slot = 0
@@ -138,6 +277,32 @@ local function getState(player)
 	return PlayerStateRepository.get(player)
 end
 
+local function ensureState(player)
+	local ps = PlayerStateRepository.get(player)
+	if not ps and player and player.Parent == Players then
+		PlayerStateRepository.init(player)
+		ps = PlayerStateRepository.get(player)
+	end
+	return ps
+end
+
+local function getPromptEvent()
+	if promptEvent and promptEvent.Parent then
+		return promptEvent
+	end
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 5)
+	if not remotes then
+		return nil
+	end
+	promptEvent = remotes:FindFirstChild("TutorialPromptEvent")
+	if not promptEvent then
+		promptEvent = Instance.new("RemoteEvent")
+		promptEvent.Name = "TutorialPromptEvent"
+		promptEvent.Parent = remotes
+	end
+	return promptEvent
+end
+
 local function pick(list)
 	if type(list) == "string" then
 		return list
@@ -151,17 +316,27 @@ local function readTime(text)
 	return math.max(3, n * 0.022 + 1.8 + n * 0.045)
 end
 
--- data: {text, key, speaker}; key = label tombol yang berdenyut di UI
-local function say(s, text, key, canContinue)
-	RemoteSafety.fire(promptEvent, s.player, "show", { text = text, key = key, cont = canContinue })
+-- data: {text, key, cont, stage, rep, repTotal, action, mood}
+local function say(s, text, key, canContinue, meta)
+	local payload = {
+		text = text,
+		key = key,
+		cont = canContinue,
+	}
+	if type(meta) == "table" then
+		for k, v in pairs(meta) do
+			payload[k] = v
+		end
+	end
+	RemoteSafety.fire(getPromptEvent(), s.player, "show", payload)
 end
 
 local function hidePrompt(s)
-	RemoteSafety.fire(promptEvent, s.player, "hide")
+	RemoteSafety.fire(getPromptEvent(), s.player, "hide")
 end
 
 local function fx(s, kind)
-	RemoteSafety.fire(promptEvent, s.player, "fx", kind)
+	RemoteSafety.fire(getPromptEvent(), s.player, "fx", kind)
 end
 
 -- Isi penuh HP (balance) dan energi kedua pihak, lalu sinkronkan ke UI pemain
@@ -255,10 +430,10 @@ local function runTutorial(s)
 	end
 
 	-- Tips yang menunggu pemain menekan "Lanjut" (atau auto-lanjut kalau diam lama)
-	local function tipWithContinue(text)
+	local function tipWithContinue(text, meta)
 		setAllowed(s, {})
 		s.continued = false
-		say(s, text, nil, true)
+		say(s, text, nil, true, meta)
 		waitFor(live, function()
 			return s.continued
 		end, CONFIG.CONTINUE_TIMEOUT)
@@ -267,22 +442,28 @@ local function runTutorial(s)
 	end
 
 	-- Tips otomatis: durasi menyesuaikan panjang teks (readTime)
-	local function tipAuto(text, key)
-		say(s, text, key, false)
+	local function tipAuto(text, key, meta)
+		say(s, text, key, false, meta)
 		pause(live, readTime(text))
 	end
 
-	local function reward(text, kind)
+	local function reward(text, kind, meta)
 		hidePrompt(s)
 		fx(s, kind or "hit")
-		say(s, text, nil, false)
+		local rewardMeta = { mood = "reward" }
+		if type(meta) == "table" then
+			for k, v in pairs(meta) do
+				rewardMeta[k] = v
+			end
+		end
+		say(s, text, nil, false, rewardMeta)
 		pause(live, math.max(CONFIG.REWARD_SECONDS, readTime(text) - 0.8))
 		hidePrompt(s)
 		pause(live, CONFIG.BREATH_SECONDS)
 	end
 
 	-- Tunggu pemain mengayun, lalu pastikan pukulannya benar-benar mengenai bot
-	local function waitForLandedHit(missKey)
+	local function waitForLandedHit(missKey, missMeta)
 		while live() do
 			local since = os.clock()
 			if not waitFor(live, function()
@@ -296,7 +477,8 @@ local function runTutorial(s)
 			end, CONFIG.HIT_CHECK_TIMEOUT) then
 				return true
 			end
-			say(s, pick(LINES.miss), missKey, false)
+			fx(s, "bad")
+			say(s, pick(LINES.miss), missKey, false, missMeta)
 		end
 		return false
 	end
@@ -304,12 +486,30 @@ local function runTutorial(s)
 	local function stageAttack()
 		for rep = 1, CONFIG.REPS do
 			setAllowed(s, { light = true })
-			say(s, rep == 1 and LINES.attackIntro or LINES.attackAgain, "KLIK KIRI", false)
-			if not waitForLandedHit("KLIK KIRI") then
+			say(s, rep == 1 and LINES.attackIntro or LINES.attackAgain, "KLIK KIRI", false, {
+				stage = "LATIHAN 1/4",
+				rep = rep - 1,
+				repTotal = CONFIG.REPS,
+				action = "light",
+				mood = "normal",
+			})
+			if
+				not waitForLandedHit("KLIK KIRI", {
+					stage = "COBA LAGI",
+					rep = rep - 1,
+					repTotal = CONFIG.REPS,
+					action = "light",
+					mood = "error",
+				})
+			then
 				return false
 			end
 			setAllowed(s, {})
-			reward(pick(LINES.attackReward), "hit")
+			reward(pick(LINES.attackReward), "hit", {
+				stage = string.format("BERHASIL %d/%d", rep, CONFIG.REPS),
+				rep = rep,
+				repTotal = CONFIG.REPS,
+			})
 		end
 		return true
 	end
@@ -326,7 +526,13 @@ local function runTutorial(s)
 		end
 		fx(s, "telegraph")
 		RemoteSafety.fire(promptEvent, s.player, "slowmo", true)
-		say(s, pick(LINES.dodgeNow), "Q", false)
+		say(s, pick(LINES.dodgeNow), "Q", false, {
+			stage = "LATIHAN 2/4",
+			rep = rep - 1,
+			repTotal = CONFIG.REPS,
+			action = "dodge",
+			mood = "telegraph",
+		})
 
 		local pressed = waitFor(live, function()
 			local ps = getState(s.player)
@@ -365,10 +571,19 @@ local function runTutorial(s)
 		local first = true
 		while live() and done < CONFIG.REPS do
 			if first then
-				tipWithContinue(LINES.dodgeIntro)
+				tipWithContinue(LINES.dodgeIntro, {
+					stage = "LATIHAN 2/4",
+					action = "continue",
+					mood = "normal",
+				})
 				first = false
 			elseif done > 0 then
-				tipAuto(LINES.dodgeAgain)
+				tipAuto(LINES.dodgeAgain, nil, {
+					stage = "LATIHAN 2/4",
+					rep = done,
+					repTotal = CONFIG.REPS,
+					mood = "normal",
+				})
 				hidePrompt(s)
 			end
 
@@ -379,11 +594,20 @@ local function runTutorial(s)
 			if result == "ok" then
 				done += 1
 				setAllowed(s, {})
-				reward(pick(LINES.dodgeReward), "good")
+				reward(pick(LINES.dodgeReward), "good", {
+					stage = string.format("BERHASIL %d/%d", done, CONFIG.REPS),
+					rep = done,
+					repTotal = CONFIG.REPS,
+				})
 			elseif result == "hit" then
 				setAllowed(s, {})
 				fx(s, "bad")
-				tipAuto(pick(LINES.dodgeFail))
+				tipAuto(pick(LINES.dodgeFail), nil, {
+					stage = "COBA LAGI",
+					rep = done,
+					repTotal = CONFIG.REPS,
+					mood = "error",
+				})
 				hidePrompt(s)
 				pause(live, CONFIG.BREATH_SECONDS)
 			end
@@ -399,9 +623,21 @@ local function runTutorial(s)
 			VFXService.setStunEffect(s.bot, true)
 			fx(s, "telegraph")
 			setAllowed(s, { heavy = true })
-			say(s, rep == 1 and LINES.heavyIntro or LINES.heavyAgain, "KLIK KANAN", false)
+			say(s, rep == 1 and LINES.heavyIntro or LINES.heavyAgain, "KLIK KANAN", false, {
+				stage = "LATIHAN 3/4",
+				rep = rep - 1,
+				repTotal = CONFIG.REPS,
+				action = "heavy",
+				mood = "normal",
+			})
 
-			local ok = waitForLandedHit("KLIK KANAN")
+			local ok = waitForLandedHit("KLIK KANAN", {
+				stage = "COBA LAGI",
+				rep = rep - 1,
+				repTotal = CONFIG.REPS,
+				action = "heavy",
+				mood = "error",
+			})
 
 			PlayerStateRepository.set(s.bot, "isStun", false)
 			VFXService.setStunEffect(s.bot, false)
@@ -410,9 +646,17 @@ local function runTutorial(s)
 			end
 			setAllowed(s, {})
 			if rep == CONFIG.REPS then
-				reward(pick(LINES.heavyReward), "heavy")
+				reward(pick(LINES.heavyReward), "heavy", {
+					stage = string.format("BERHASIL %d/%d", rep, CONFIG.REPS),
+					rep = rep,
+					repTotal = CONFIG.REPS,
+				})
 			else
-				reward("Bagus! Sekali lagi, biar tangannya hafal.", "heavy")
+				reward("Bagus! Sekali lagi, biar tangannya hafal.", "heavy", {
+					stage = string.format("BERHASIL %d/%d", rep, CONFIG.REPS),
+					rep = rep,
+					repTotal = CONFIG.REPS,
+				})
 			end
 		end
 		return true
@@ -422,7 +666,10 @@ local function runTutorial(s)
 		s.reachedFree = true
 		setAllowed(s, false)
 		resetBalances(s)
-		say(s, LINES.free, nil, false)
+		say(s, LINES.free, nil, false, {
+			stage = "LATIHAN 4/4",
+			mood = "normal",
+		})
 		task.delay(readTime(LINES.free), function()
 			if live() then
 				hidePrompt(s)
@@ -443,7 +690,10 @@ local function runTutorial(s)
 				elseif os.clock() - idleSince >= CONFIG.IDLE_RESET_SECONDS then
 					idleSince = os.clock()
 					resetBalances(s)
-					say(s, LINES.idleReset, nil, false)
+					say(s, LINES.idleReset, nil, false, {
+						stage = "AYO GERAK",
+						mood = "error",
+					})
 					task.delay(readTime(LINES.idleReset), function()
 						if live() then
 							hidePrompt(s)
@@ -474,7 +724,11 @@ local function runTutorial(s)
 			if not stageAttack() then
 				return
 			end
-			tipWithContinue(LINES.energy)
+			tipWithContinue(LINES.energy, {
+				stage = "TIPS ENERGI",
+				action = "continue",
+				mood = "normal",
+			})
 
 			if not stageDodge() then
 				return
@@ -515,7 +769,10 @@ function TutorialBattleService.onMatchEnd(winner, matchInfo)
 	if winner == s.player then
 		PlayerStateRepository.set(s.player, "tutorialDone", true)
 		fx(s, "win")
-		say(s, LINES.done, nil, false)
+		say(s, LINES.done, nil, false, {
+			stage = "TUTORIAL SELESAI",
+			mood = "reward",
+		})
 		cleanup(s, true)
 		task.delay(readTime(LINES.done), function()
 			RemoteSafety.fire(promptEvent, s.player, "hide")
@@ -548,7 +805,7 @@ function TutorialBattleService.start(player)
 		warn("[TutorialBattleService] Sesi tutorial sudah aktif untuk: " .. player.Name)
 		return false
 	end
-	local ps = getState(player)
+	local ps = ensureState(player)
 	if not ps or ps.isPlaying or ps.isInMatchmaking then
 		warn("[TutorialBattleService] Pemain sedang match / matchmaking")
 		return false
@@ -560,46 +817,57 @@ function TutorialBattleService.start(player)
 	local slot = acquireSlot()
 	local arenaName = "TutorialBattle_" .. player.UserId
 
-	-- Pastikan map tutorial dari ServerStorage di-clone ke Workspace
-	local template = ServerStorage:FindFirstChild("TutorialMapTemplate")
-		or workspace:FindFirstChild("TutorialMapTemplate")
+	-- Pastikan map tutorial yang lengkap (memiliki BattleArena) dari ServerStorage/Workspace di-clone ke Workspace
+	local ssTemplate = ServerStorage:FindFirstChild("TutorialMapTemplate")
+	local wsTemplate = workspace:FindFirstChild("TutorialMapTemplate")
+	local template = if ssTemplate and ssTemplate:FindFirstChild("BattleArena", true)
+		then ssTemplate
+		elseif wsTemplate and wsTemplate:FindFirstChild("BattleArena", true) then wsTemplate
+		else ssTemplate or wsTemplate
 
 	local mapClone
-	local battleArena
 	if template then
 		mapClone = template:Clone()
-		mapClone.Name = arenaName
-		mapClone.Parent = workspace
-
-		-- Geser map secara dinamis berdasarkan slot yang dialokasikan
-		local offset = Vector3.new(slot * SLOT_DISTANCE, 0, 0)
-		offsetInstance(mapClone, offset)
-
-		battleArena = mapClone:FindFirstChild("BattleArena", true)
-		if battleArena then
-			local parts = {}
-			for _, p in ipairs(battleArena:GetChildren()) do
-				table.insert(parts, p.Name)
-			end
-			print(
-				string.format(
-					"[TutorialBattleService] Map tutorial di-clone untuk %s di %s (Slot %d, Offset: %s). BattleArena: %s (Isi: %s)",
-					player.Name,
-					arenaName,
-					slot,
-					tostring(offset),
-					battleArena:GetFullName(),
-					table.concat(parts, ", ")
-				)
-			)
-		else
-			warn("[TutorialBattleService] BattleArena tidak ditemukan di dalam mapClone " .. arenaName)
-		end
 	else
-		warn("[TutorialBattleService] TutorialMapTemplate tidak ditemukan di ServerStorage!")
+		warn("[TutorialBattleService] TutorialMapTemplate tidak ditemukan; membuat arena tutorial fallback.")
+		mapClone = Instance.new("Model")
 	end
 
-	local bot = BotService.create()
+	mapClone.Name = arenaName
+	ensureTutorialArenaStructure(mapClone)
+	mapClone.Parent = workspace
+
+	-- Geser map jauh dari lobby berdasarkan slot yang dialokasikan (slot 0 tetap jauh)
+	local offset = BASE_OFFSET + Vector3.new(slot * SLOT_DISTANCE, 0, 0)
+	offsetInstance(mapClone, offset)
+
+	local battleArena = mapClone:FindFirstChild("BattleArena", true)
+	if battleArena then
+		local parts = {}
+		for _, p in ipairs(battleArena:GetChildren()) do
+			table.insert(parts, p.Name)
+		end
+		print(
+			string.format(
+				"[TutorialBattleService] Map tutorial di-clone untuk %s di %s (Slot %d, Offset: %s). BattleArena: %s (Isi: %s)",
+				player.Name,
+				arenaName,
+				slot,
+				tostring(offset),
+				battleArena:GetFullName(),
+				table.concat(parts, ", ")
+			)
+		)
+	else
+		warn("[TutorialBattleService] BattleArena tidak ditemukan di dalam mapClone " .. arenaName)
+	end
+
+	local coachName = TutorialConfig.NPC_DISPLAY_NAME or "Mr. Noob"
+	local bot = BotService.create({
+		name = coachName,
+		displayName = coachName,
+		style = "noob",
+	})
 	PlayerStateRepository.set(player, "noDecay", true)
 	PlayerStateRepository.set(bot, "noDecay", true)
 	local s = {
@@ -626,10 +894,48 @@ function TutorialBattleService.start(player)
 	return true
 end
 
-local function setupSirNattos(model)
+local function isNpcModelName(name)
+	if name == TutorialConfig.NPC_NAME then
+		return true
+	end
+	if type(TutorialConfig.NPC_ALIASES) == "table" then
+		for _, alias in ipairs(TutorialConfig.NPC_ALIASES) do
+			if name == alias then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function findNpcModel()
+	local direct = TutorialConfig.NPC_NAME and workspace:FindFirstChild(TutorialConfig.NPC_NAME, true)
+	if direct and direct:IsA("Model") then
+		return direct
+	end
+	if type(TutorialConfig.NPC_ALIASES) == "table" then
+		for _, alias in ipairs(TutorialConfig.NPC_ALIASES) do
+			local found = workspace:FindFirstChild(alias, true)
+			if found and found:IsA("Model") then
+				return found
+			end
+		end
+	end
+	return nil
+end
+
+local function setupCoachNpc(model)
+	local displayName = TutorialConfig.NPC_DISPLAY_NAME or "Mr. Noob"
+	model.Name = displayName
+	applyNoobSkinToModel(model)
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.DisplayName = displayName
+	end
+
 	local head = model:FindFirstChild("Head") or model:WaitForChild("Head", 5) or model.PrimaryPart
 	if not head then
-		warn("[TutorialService] Sir Nattos tidak memiliki Head atau PrimaryPart")
+		warn("[TutorialService] NPC pelatih tidak memiliki Head atau PrimaryPart")
 		return
 	end
 
@@ -643,65 +949,65 @@ local function setupSirNattos(model)
 	if not prompt then
 		prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "TutorialTalkPrompt"
-		prompt.ObjectText = TutorialConfig.NPC_DISPLAY_NAME or "Sir Nattos"
-		prompt.ActionText = TutorialConfig.PROMPT_ACTION_TEXT or "Ngobrol"
 		prompt.KeyboardKeyCode = Enum.KeyCode.E
 		prompt.HoldDuration = 0
 		prompt.MaxActivationDistance = TutorialConfig.CONVERSATION_DISTANCE or 14
 		prompt.RequiresLineOfSight = false
 		prompt.Parent = head
 	end
+	prompt.ObjectText = displayName
+	prompt.ActionText = TutorialConfig.PROMPT_ACTION_TEXT or "Ngobrol"
 
 	prompt.Triggered:Connect(function(player)
 		if activeSessions[player] then
 			return
 		end
-		local ps = getState(player)
+		local ps = ensureState(player)
 		if not ps or ps.isPlaying or ps.isInMatchmaking then
 			return
 		end
-		RemoteSafety.fire(promptEvent, player, "openLobbyDialog")
+		RemoteSafety.fire(getPromptEvent(), player, "openLobbyDialog")
 	end)
 
-	print("[TutorialService] ProximityPrompt Sir Nattos berhasil dipasang.")
+	print("[TutorialService] ProximityPrompt " .. displayName .. " berhasil dipasang.")
 end
 
-local function initSirNattosDetection()
-	local existingNpc = workspace:FindFirstChild(TutorialConfig.NPC_NAME, true)
+local function initCoachNpcDetection()
+	local existingNpc = findNpcModel()
 	if existingNpc then
-		task.spawn(setupSirNattos, existingNpc)
+		task.spawn(setupCoachNpc, existingNpc)
 	else
 		local conn
 		conn = workspace.DescendantAdded:Connect(function(descendant)
-			if descendant:IsA("Model") and descendant.Name == TutorialConfig.NPC_NAME then
+			if descendant:IsA("Model") and isNpcModelName(descendant.Name) then
 				conn:Disconnect()
-				task.spawn(setupSirNattos, descendant)
+				task.spawn(setupCoachNpc, descendant)
 			end
 		end)
 	end
 end
 
 function TutorialBattleService.init()
-	local remotes = ReplicatedStorage:WaitForChild("Remotes")
-	promptEvent = remotes:FindFirstChild("TutorialPromptEvent")
-	if not promptEvent then
-		promptEvent = Instance.new("RemoteEvent")
-		promptEvent.Name = "TutorialPromptEvent"
-		promptEvent.Parent = remotes
+	if initialized then
+		return
 	end
+	initialized = true
 
-	-- Klien menekan "Lanjut" atau memilih opsi latihan dari dialog Sir Nattos
-	promptEvent.OnServerEvent:Connect(function(player, kind)
-		if kind == "continue" then
-			local s = activeSessions[player]
-			if s then
-				s.continued = true
+	local event = getPromptEvent()
+	if event then
+		-- Klien menekan "Lanjut" atau memilih opsi latihan dari dialog Mr. Noob
+		event.OnServerEvent:Connect(function(player, kind)
+			if kind == "continue" then
+				local s = activeSessions[player]
+				if s then
+					s.continued = true
+				end
+			elseif kind == "startTutorial" then
+				print("[TutorialBattleService] Request startTutorial diterima dari client " .. player.Name)
+				TutorialBattleService.start(player)
 			end
-		elseif kind == "startTutorial" then
-			print("[TutorialBattleService] Request startTutorial diterima dari client " .. player.Name)
-			TutorialBattleService.start(player)
-		end
-	end)
+		end)
+	end
 
 	CombatController.AttackStarted.Event:Connect(function(attacker)
 		local s = activeSessions[attacker]
@@ -717,7 +1023,7 @@ function TutorialBattleService.init()
 		end
 	end)
 
-	initSirNattosDetection()
+	initCoachNpcDetection()
 end
 
 return TutorialBattleService

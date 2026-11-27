@@ -11,6 +11,7 @@ local TextChatService = game:GetService("TextChatService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local TutorialBattleService = require(ServerScriptService.Core.Service.TutorialBattleService)
+task.spawn(TutorialBattleService.init)
 
 local function triggerTutorial(player)
 	print("[TutorialDev] /tutorial dipicu oleh " .. player.Name)

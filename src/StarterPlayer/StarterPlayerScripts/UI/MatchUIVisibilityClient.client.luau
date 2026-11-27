@@ -132,9 +132,12 @@ end
 
 task.spawn(function()
 	local Workspace = game:GetService("Workspace")
-	local pillowArena = Workspace:WaitForChild("World", WAIT_TIMEOUT)
-		:WaitForChild("Environment", WAIT_TIMEOUT)
-		:WaitForChild("PillowArena", WAIT_TIMEOUT)
+	local world = Workspace:WaitForChild("World", WAIT_TIMEOUT)
+	local env = world and world:WaitForChild("Environment", WAIT_TIMEOUT)
+	local pillowArena = env and env:WaitForChild("PillowArena", WAIT_TIMEOUT)
+	if not pillowArena then
+		return
+	end
 	pillowArena.ChildAdded:Connect(registerArenaTeleporter)
 	for _, child in ipairs(pillowArena:GetChildren()) do
 		registerArenaTeleporter(child)
