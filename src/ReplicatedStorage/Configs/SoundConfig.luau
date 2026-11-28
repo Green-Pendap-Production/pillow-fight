@@ -25,7 +25,19 @@ local SoundConfig = {
 			-- bunyinya identik tiap kali -- paling cepat kerasa diulang-ulang.
 		},
 
-		dodge = "", -- Ganti dengan ID Sound untuk Dodge
+		-- 9 varian whoosh dodge (dodgeeee1-9), silence di depannya sudah
+		-- dipangkas supaya bunyinya pas di frame input, bukan telat ~0.3 detik.
+		dodge = {
+			"102683636792067", -- dodge 1
+			"94580585112248", -- dodge 2
+			"77587417462784", -- dodge 3
+			"112800628943367", -- dodge 4
+			"125169086370155", -- dodge 5
+			"71243072248543", -- dodge 6
+			"97639852189302", -- dodge 7
+			"137191416010968", -- dodge 8
+			"109837871432612", -- dodge 9
+		},
 
 		light_impact = {
 			"96011860549113", -- Ganti dengan ID Sound Impact (Light) varian 1
@@ -39,9 +51,22 @@ local SoundConfig = {
 		-- ── Slot baru: momen yang selama ini benar-benar hening ──
 		perfect_dodge = "", -- Sentakan/"ting" pas berhasil baca serangan lawan
 		combo_milestone = "", -- Dipicu tiap kelipatan COMBO_MILESTONE_STEP
-		stun = "", -- Pas energi habis & pemain kena stun
+		stun = "85711637732885", -- Pas energi habis & pemain kena stun (Stun.mp3, 2.6 dtk silence depan dipangkas)
 		ko = "", -- Pas ronde berakhir (KOEvent)
+
+		-- ── Jatuh / bangun ──
+		fall = "74140763335877", -- Loser jatuh (animasi "fall" & "defeat")
+		rise = "134541152548256", -- Loser bangun lagi di awal ronde 2+ (animasi "rise")
+
+		-- ── FFYL (Fight For Your Life) ──
+		ffyl_start = "105542305874169", -- Sting saat masuk FFYL (startffyl2)
+		ffyl_loop = "136414662330674", -- Ambience selama minigame mash (ffyl2, ~4.4 dtk); di-fade
+		--                 out otomatis begitu FFYL selesai (menang/kalah)
+		ffyl_end = "127996640721989", -- Berhasil bangun dari FFYL (endffyl2)
 	},
+
+	-- Durasi fade-out (detik) saat ffyl_loop dihentikan sebelum habis.
+	FFYL_LOOP_FADE_OUT = 0.35,
 
 	-- ================================================================
 	-- VARIASI PLAYBACK

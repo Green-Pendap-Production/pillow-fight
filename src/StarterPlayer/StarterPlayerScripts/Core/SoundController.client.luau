@@ -14,6 +14,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
 
 local SoundConfig = require(ReplicatedStorage:WaitForChild("Configs"):WaitForChild("SoundConfig"))
 
@@ -118,11 +119,25 @@ end
 -- satu jalur.
 --   pitchScale  = pengali pitch tambahan (combo pitch / suara lawan)
 --   volumeScale = pengali volume tambahan (suara lawan)
+local activeFades = {} -- activeFades[Sound] = Tween fade-out yang sedang jalan
+
+local function cancelFade(sound)
+	local tween = activeFades[sound]
+	if tween then
+		activeFades[sound] = nil
+		tween:Cancel()
+	end
+end
+
 local function playSound(soundName, pitchScale, volumeScale)
 	local sound = getNextVariant(soundName)
 	if not sound then
 		return
 	end
+
+	-- Kalau varian ini masih fade-out dari pemutaran sebelumnya, batalkan
+	-- dulu -- kalau tidak, tween lama bakal menimpa volume baru & mematikannya.
+	cancelFade(sound)
 
 	-- Selalu dihitung ulang dari nilai dasar, bukan dari nilai sebelumnya --
 	-- ini yang mencegah pitch combo bocor ke pukulan berikutnya (dulu
@@ -133,6 +148,40 @@ local function playSound(soundName, pitchScale, volumeScale)
 	sound.Volume = (baseVolume[sound] or 1) * (volumeScale or 1) * sfxMult * jitter(VOLUME_JITTER)
 	sound.TimePosition = 0
 	sound:Play()
+end
+
+-- Hentikan semua varian sebuah suara dengan fade-out singkat. Dipakai untuk
+-- suara panjang yang harus berhenti begitu state-nya selesai (ffyl_loop),
+-- supaya tidak terpotong kasar dan tidak menumpuk dengan suara berikutnya.
+local function stopSound(soundName, fadeTime)
+	local variants = sounds[soundName]
+	if not variants then
+		return
+	end
+
+	for _, sound in ipairs(variants) do
+		if sound.IsPlaying and not activeFades[sound] then
+			if not fadeTime or fadeTime <= 0 then
+				sound:Stop()
+			else
+				local tween = TweenService:Create(sound, TweenInfo.new(fadeTime), { Volume = 0 })
+				activeFades[sound] = tween
+				tween.Completed:Connect(function(playbackState)
+					if playbackState == Enum.PlaybackState.Completed and activeFades[sound] == tween then
+						activeFades[sound] = nil
+						sound:Stop()
+					end
+				end)
+				tween:Play()
+			end
+		end
+	end
+end
+
+local FFYL_LOOP_FADE_OUT = SoundConfig.FFYL_LOOP_FADE_OUT or 0.35
+
+local function stopFFYLLoop()
+	stopSound("ffyl_loop", FFYL_LOOP_FADE_OUT)
 end
 
 -- === COMBO PITCH CONFIG ===
@@ -214,7 +263,36 @@ attackResultEvent.OnClientEvent:Connect(function(actionType, success, extraData)
 		playSound("perfect_dodge")
 	elseif actionType == "stun" then
 		playSound("stun")
+	elseif actionType == "startFFYL" then
+		playSound("ffyl_start")
+		playSound("ffyl_loop")
+	elseif actionType == "endFFYL" then
+		stopFFYLLoop()
+		playSound("ffyl_end")
+	elseif actionType == "fall" or actionType == "defeat" then
+		-- Gagal FFYL langsung berujung fall/defeat -- pastikan ambience FFYL
+		-- tidak masih jalan di bawah suara jatuhnya.
+		stopFFYLLoop()
+		playSound("fall")
+	elseif actionType == "rise" then
+		playSound("rise")
 	end
+end)
+
+-- Jaring pengaman: FFYLStateEvent(false) ditembak setiap kali panel FFYL
+-- ditutup (menang, kalah, atau ronde direset). Remote ini dibuat server
+-- saat runtime, jadi ditunggu di thread terpisah supaya init tidak tertahan.
+task.spawn(function()
+	local ffylStateEvent = ReplicatedStorage.Remotes:WaitForChild("FFYLStateEvent", 15)
+	if not ffylStateEvent then
+		warn("[SoundController] FFYLStateEvent tidak ketemu -- auto-stop ffyl_loop dilewati.")
+		return
+	end
+	ffylStateEvent.OnClientEvent:Connect(function(isFFYL)
+		if not isFFYL then
+			stopFFYLLoop()
+		end
+	end)
 end)
 
 -- KO: KOEvent ditembak ke kedua pemain di akhir ronde. Dipasang opsional
