@@ -11,6 +11,7 @@
 	            ReplicatedStorage > Configs > TutorialConfig
 ]]
 
+local ContentProvider = game:GetService("ContentProvider")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -779,6 +780,48 @@ local function ensureNpcTracks(): boolean
 		npcAnimTracks.idle = idleTrack
 	end
 
+	-- Preload & warm-up agar animasi HI / BeforeIdle / Idle langsung siap tanpa jeda streaming
+	task.spawn(function()
+		local toPreload = {}
+		for _, key in ipairs({ "hi", "beforeIdle", "idle" }) do
+			local id = animIds[key]
+			if type(id) == "string" and id ~= "" then
+				local a = Instance.new("Animation")
+				a.AnimationId = id
+				table.insert(toPreload, a)
+			end
+		end
+		if #toPreload > 0 then
+			pcall(function()
+				ContentProvider:PreloadAsync(toPreload)
+			end)
+			for _, a in ipairs(toPreload) do
+				a:Destroy()
+			end
+		end
+		if npcAnimModel ~= npc then
+			return
+		end
+		if beforeIdleTrack then
+			beforeIdleTrack.Looped = false
+			if not beforeIdleTrack.IsPlaying and npcAnimState ~= "dialog" then
+				pcall(function()
+					beforeIdleTrack:Play(0, 0, 1)
+					beforeIdleTrack:Stop(0)
+				end)
+			end
+		end
+		if idleTrack then
+			idleTrack.Looped = true
+			if not idleTrack.IsPlaying and npcAnimState ~= "dialog" then
+				pcall(function()
+					idleTrack:Play(0, 0, 1)
+					idleTrack:Stop(0)
+				end)
+			end
+		end
+	end)
+
 	return next(npcAnimTracks) ~= nil
 end
 
@@ -799,8 +842,11 @@ local function playNpcHi()
 	if npcAnimTracks.idle and npcAnimTracks.idle.IsPlaying then
 		npcAnimTracks.idle:Stop(0.15)
 	end
-	if npcAnimTracks.hi and not npcAnimTracks.hi.IsPlaying then
-		npcAnimTracks.hi:Play(0.15)
+	if npcAnimTracks.hi then
+		npcAnimTracks.hi.Looped = true
+		if not npcAnimTracks.hi.IsPlaying then
+			npcAnimTracks.hi:Play(0.15)
+		end
 	end
 end
 
@@ -825,7 +871,13 @@ local function playNpcTalkSequence()
 
 	local beforeIdle = npcAnimTracks.beforeIdle
 	local idle = npcAnimTracks.idle
+	if idle then
+		idle.Looped = true
+	end
+
 	if beforeIdle then
+		-- Paksa Looped = false tepat sebelum play (mencegah flag looped bawaan asset menimpa)
+		beforeIdle.Looped = false
 		beforeIdle:Stop(0)
 		beforeIdle:Play(0.12)
 
@@ -841,18 +893,26 @@ local function playNpcTalkSequence()
 			if beforeIdle.IsPlaying then
 				beforeIdle:Stop(0.15)
 			end
-			if idle and not idle.IsPlaying then
-				idle:Play(0.15)
+			if idle then
+				idle.Looped = true
+				if not idle.IsPlaying then
+					idle:Play(0.15)
+				end
 			end
 		end
 
 		npcBeforeIdleConn = beforeIdle.Stopped:Once(startIdleAfterTransition)
-		-- Fallback jika asset BeforeIdle belum sempat stream atau Length == 0
+		-- Pengaman jika metadata Looped masih ke-stream setelah Play atau asset gagal stream
+		local fallbackWait = if beforeIdle.Length > 0 then math.min(beforeIdle.Length + 0.1, 4) else 1.5
+		task.delay(fallbackWait, startIdleAfterTransition)
 		if not beforeIdle.IsPlaying then
 			startIdleAfterTransition()
 		end
-	elseif idle and not idle.IsPlaying then
-		idle:Play(0.15)
+	elseif idle then
+		idle.Looped = true
+		if not idle.IsPlaying then
+			idle:Play(0.15)
+		end
 	end
 end
 
