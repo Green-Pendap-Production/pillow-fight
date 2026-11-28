@@ -105,6 +105,7 @@ function BotAnimationService.attach(botPlayer)
 		lightIndex = 1,
 		hurtIndex = 1,
 		currentActionTrack = nil,
+		idleActive = false,
 	}
 
 	-- Warm-up seluruh track supaya frame pertama tidak telat streaming.
@@ -197,23 +198,29 @@ local function stopType(state, actionType, fadeOut)
 	stopData(state.tracks[actionType], fadeOut)
 end
 
+local TRANSIENT_ACTIONS = {
+	light = true,
+	heavy = true,
+	dodge = true,
+	lightHurt = true,
+	heavyHurt = true,
+	start = true,
+	rise = true,
+	endFFYL = true,
+}
+
 local function stopConflicts(state, actionType)
 	local f = fade(actionType, true)
 
-	-- Idle adalah baseline match, bukan overlay untuk action. Player client
-	-- juga mematikan idle saat masuk action; bot harus punya lifecycle yang
-	-- sama supaya track R6 tidak terus blend di bawah attack/fall/rise.
-	if actionType ~= "idle" then
-		stopType(state, "idle", math.min(f, 0.08))
-	end
-
 	if actionType == "stun" then
+		stopType(state, "idle", math.min(f, 0.08))
 		stopData(state.currentActionTrack, f)
 		state.currentActionTrack = nil
 		stopType(state, "lightHurt", f)
 		stopType(state, "heavyHurt", f)
 		stopType(state, "dodge", f)
 	elseif actionType == "fall" then
+		stopType(state, "idle", math.min(f, 0.08))
 		stopData(state.currentActionTrack, f)
 		state.currentActionTrack = nil
 		stopType(state, "lightHurt", f)
@@ -248,6 +255,7 @@ local function stopConflicts(state, actionType)
 		stopType(state, "lightHurt", 0.05)
 		stopType(state, "heavyHurt", 0.05)
 	elseif actionType == "startFFYL" then
+		stopType(state, "idle", math.min(f, 0.08))
 		stopData(state.currentActionTrack, f)
 		state.currentActionTrack = nil
 		stopType(state, "lightHurt", f)
@@ -255,6 +263,7 @@ local function stopConflicts(state, actionType)
 		stopType(state, "stun", f)
 		stopType(state, "fall", f)
 	elseif actionType == "defeat" then
+		stopType(state, "idle", math.min(f, 0.08))
 		stopData(state.currentActionTrack, f)
 		state.currentActionTrack = nil
 		stopType(state, "lightHurt", f)
@@ -280,6 +289,12 @@ function BotAnimationService.play(botPlayer, actionType, variantIndex)
 	local trackData = state.tracks[actionType]
 	if not trackData then
 		return nil
+	end
+
+	if actionType == "idle" or actionType == "rise" or actionType == "endFFYL" then
+		state.idleActive = true
+	elseif actionType == "fall" or actionType == "defeat" or actionType == "startFFYL" or actionType == "stun" then
+		state.idleActive = false
 	end
 
 	stopConflicts(state, actionType)
@@ -312,12 +327,15 @@ function BotAnimationService.play(botPlayer, actionType, variantIndex)
 	track:Stop(0)
 	track:Play(fade(actionType, false), weight(actionType), speed(actionType))
 
-	if actionType == "light" or actionType == "heavy" or actionType == "dodge" then
-		state.currentActionTrack = track
+	if TRANSIENT_ACTIONS[actionType] then
+		if actionType == "light" or actionType == "heavy" or actionType == "dodge" then
+			state.currentActionTrack = track
+		end
+		local playToken = (state.transientToken or 0) + 1
+		state.transientToken = playToken
 
-		-- Setelah action selesai, idle dikembalikan jika bot masih berada
-		-- dalam state playing. Jangan lakukan ini untuk fall/defeat karena
-		-- keduanya memang harus meninggalkan idle sampai ronde berikutnya.
+		-- Pastikan animasi idle (Priority.Movement) tetap jalan setelah aksi
+		-- atau reaksi hurt selesai, selama bot tidak masuk state jatuh/kalah.
 		task.spawn(function()
 			local finished = false
 			pcall(function()
@@ -328,11 +346,13 @@ function BotAnimationService.play(botPlayer, actionType, variantIndex)
 				return
 			end
 			local current = animState[botPlayer]
-			if current ~= state then
+			if current ~= state or state.transientToken ~= playToken then
 				return
 			end
 			if state.currentActionTrack == track then
 				state.currentActionTrack = nil
+			end
+			if state.idleActive then
 				local idle = state.tracks.idle
 				if idle and not idle.IsPlaying then
 					idle:Play(fade("idle", false), weight("idle"), speed("idle"))
@@ -348,6 +368,9 @@ function BotAnimationService.stop(botPlayer, actionType)
 	local state = animState[botPlayer]
 	if not state then
 		return
+	end
+	if actionType == "idle" then
+		state.idleActive = false
 	end
 	stopType(state, actionType, fade(actionType, true))
 end

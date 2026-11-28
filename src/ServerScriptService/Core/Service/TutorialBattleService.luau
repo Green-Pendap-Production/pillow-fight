@@ -45,9 +45,14 @@ local CONFIG = {
 	HIT_CHECK_TIMEOUT = 1.5,
 	HEAVY_ENERGY_WAIT = 2.5, -- napas sebelum heavy supaya energi sempat pulih
 
-	EASY_ATTACK_MIN = 4,
-	EASY_ATTACK_MAX = 6,
-	EASY_HEAVY_CHANCE = 0.15,
+	EASY_ATTACK_MIN = 1.4,
+	EASY_ATTACK_MAX = 2.4,
+	EASY_HEAVY_CHANCE = 0.25,
+	FREE_MIN_ENERGY_RATIO = 0.25,
+	FREE_DODGE_CHANCE = 0.28,
+	FREE_DODGE_DELAY_MIN = 0.08,
+	FREE_DODGE_DELAY_MAX = 0.16,
+	FREE_DODGE_COOLDOWN = 2.6,
 	IDLE_RESET_SECONDS = 10, -- player diam segini lama di mode FREE -> HP kedua pihak di-reset
 }
 
@@ -98,6 +103,8 @@ local LINES = {
 
 	idleReset = "Kok bengong? Darah kuisi lagi, ayo gerak.",
 	free = "Latihan beres. Sekarang coba tumbangin aku beneran.",
+	rematchIntro = "Ayo ulang lagi! Kali ini jangan kasih celah.",
+	loseRetry = "Kalah tuh! Jangan nyerah, ayo mulai ulang.",
 	done = "Mantap, kamu berhasil ngalahin aku. Sana buktiin di arena.",
 }
 
@@ -108,6 +115,7 @@ local BASE_OFFSET = Vector3.new(6000, 120, 0) -- Jauh dari lobby sejak slot pert
 local SLOT_DISTANCE = 3500 -- Jarak antar arena tutorial (3500 studs saling berjauhan)
 local occupiedSlots = {} -- [slotIndex] = true
 local activeSessions = {} -- [player] = session table
+local rematchQueued = {} -- [player] = true saat menunggu restart setelah kalah
 
 local NOOB_YELLOW = Color3.fromRGB(245, 205, 48)
 local NOOB_BLUE = Color3.fromRGB(13, 105, 172)
@@ -383,11 +391,12 @@ local function pause(live, seconds)
 	end
 end
 
-local function cleanup(s, keepPrompt)
+local function cleanup(s, keepPrompt, skipAutoDestroy)
 	if activeSessions[s.player] ~= s then
 		return
 	end
 	activeSessions[s.player] = nil
+	s.freeActive = false
 	s.runId += 1 -- hentikan coroutine tahap yang masih jalan
 
 	local ps = getState(s.player)
@@ -404,7 +413,7 @@ local function cleanup(s, keepPrompt)
 		releaseSlot(s.slot)
 	end
 
-	if s.mapModel and s.mapModel.Parent == workspace then
+	if not skipAutoDestroy and s.mapModel and s.mapModel.Parent == workspace then
 		task.delay(4, function()
 			if s.mapModel and s.mapModel.Parent == workspace then
 				s.mapModel:Destroy()
@@ -664,13 +673,15 @@ local function runTutorial(s)
 
 	local function stageFree()
 		s.reachedFree = true
+		s.freeActive = true
 		setAllowed(s, false)
 		resetBalances(s)
-		say(s, LINES.free, nil, false, {
+		local freeLine = if s.isRematch then LINES.rematchIntro else LINES.free
+		say(s, freeLine, nil, false, {
 			stage = "LATIHAN 4/4",
 			mood = "normal",
 		})
-		task.delay(readTime(LINES.free), function()
+		task.delay(readTime(freeLine), function()
 			if live() then
 				hidePrompt(s)
 			end
@@ -710,7 +721,14 @@ local function runTutorial(s)
 			end
 
 			local bs = getState(s.bot)
-			if bs and bs.isAlive and not bs.isFFYL and not bs.isStun then
+			local energyRatio = bs and ((bs.energy or 0) / EnergyConfig.MAX_ENERGY) or 0
+			if
+				bs
+				and bs.isAlive
+				and not bs.isFFYL
+				and not bs.isStun
+				and energyRatio >= CONFIG.FREE_MIN_ENERGY_RATIO
+			then
 				local actionType = (math.random() < CONFIG.EASY_HEAVY_CHANCE) and "heavy" or "light"
 				if CombatController.performAction(s.bot, actionType) then
 					BotAnimationService.play(s.bot, actionType)
@@ -794,13 +812,45 @@ function TutorialBattleService.onMatchEnd(winner, matchInfo)
 				end
 			end
 		end)
+	elseif winner == s.bot and s.player and s.player.Parent == Players and not rematchQueued[s.player] then
+		local retryPlayer = s.player
+		local wasFree = s.reachedFree == true
+		local oldMap = s.mapModel
+		rematchQueued[retryPlayer] = true
+
+		say(s, LINES.loseRetry, nil, false, {
+			stage = "COBA LAGI",
+			mood = "error",
+		})
+		cleanup(s, true, true)
+
+		task.spawn(function()
+			ArenaService = ArenaService or require(Core.Service.ArenaService)
+			local deadline = os.clock() + 5
+			while os.clock() < deadline and retryPlayer.Parent == Players do
+				local ps = getState(retryPlayer)
+				if not ArenaService.isTutorialMatch(retryPlayer) and ps and not ps.isPlaying then
+					break
+				end
+				task.wait(0.1)
+			end
+			task.wait(0.15)
+			if oldMap and oldMap.Parent == workspace then
+				oldMap:Destroy()
+			end
+			rematchQueued[retryPlayer] = nil
+			if retryPlayer.Parent == Players then
+				RemoteSafety.fire(getPromptEvent(), retryPlayer, "hide")
+				TutorialBattleService.start(retryPlayer, { startAtFree = wasFree })
+			end
+		end)
 	else
 		cleanup(s)
 	end
 end
 
 -- ===== Entry point =====
-function TutorialBattleService.start(player)
+function TutorialBattleService.start(player, opts)
 	if activeSessions[player] then
 		warn("[TutorialBattleService] Sesi tutorial sudah aktif untuk: " .. player.Name)
 		return false
@@ -870,12 +920,16 @@ function TutorialBattleService.start(player)
 	})
 	PlayerStateRepository.set(player, "noDecay", true)
 	PlayerStateRepository.set(bot, "noDecay", true)
+	local startAtFree = type(opts) == "table" and opts.startAtFree == true
 	local s = {
 		player = player,
 		bot = bot,
 		runId = 0,
 		lastSwingAt = 0,
-		reachedFree = false,
+		reachedFree = startAtFree,
+		isRematch = startAtFree,
+		freeActive = false,
+		botDodgeBusyUntil = 0,
 		continued = false,
 		slot = slot,
 		arenaName = arenaName,
@@ -928,9 +982,20 @@ local function setupCoachNpc(model)
 	local displayName = TutorialConfig.NPC_DISPLAY_NAME or "Mr. Noob"
 	model.Name = displayName
 	applyNoobSkinToModel(model)
+
+	-- Hapus script Animate bawaan jika ada agar animasi custom NPC lobby (HI/BeforeIdle/Idle) tidak tertimpa
+	local defaultAnimate = model:FindFirstChild("Animate")
+	if defaultAnimate and defaultAnimate:IsA("LocalScript") then
+		defaultAnimate:Destroy()
+	end
+
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	if hum then
 		hum.DisplayName = displayName
+		if not hum:FindFirstChildOfClass("Animator") then
+			local animator = Instance.new("Animator")
+			animator.Parent = hum
+		end
 	end
 
 	local head = model:FindFirstChild("Head") or model:WaitForChild("Head", 5) or model.PrimaryPart
@@ -951,10 +1016,10 @@ local function setupCoachNpc(model)
 		prompt.Name = "TutorialTalkPrompt"
 		prompt.KeyboardKeyCode = Enum.KeyCode.E
 		prompt.HoldDuration = 0
-		prompt.MaxActivationDistance = TutorialConfig.CONVERSATION_DISTANCE or 14
 		prompt.RequiresLineOfSight = false
 		prompt.Parent = head
 	end
+	prompt.MaxActivationDistance = TutorialConfig.CONVERSATION_DISTANCE or 8
 	prompt.ObjectText = displayName
 	prompt.ActionText = TutorialConfig.PROMPT_ACTION_TEXT or "Ngobrol"
 
@@ -1009,14 +1074,38 @@ function TutorialBattleService.init()
 		end)
 	end
 
-	CombatController.AttackStarted.Event:Connect(function(attacker)
+	CombatController.AttackStarted.Event:Connect(function(attacker, victim)
 		local s = activeSessions[attacker]
 		if s then
 			s.lastSwingAt = os.clock()
+			if victim == s.bot and s.freeActive then
+				local now = os.clock()
+				if now >= (s.botDodgeBusyUntil or 0) then
+					local delaySec = CONFIG.FREE_DODGE_DELAY_MIN
+						+ math.random() * (CONFIG.FREE_DODGE_DELAY_MAX - CONFIG.FREE_DODGE_DELAY_MIN)
+					s.botDodgeBusyUntil = now + delaySec + CONFIG.FREE_DODGE_COOLDOWN
+					local runId = s.runId
+					task.delay(delaySec, function()
+						if activeSessions[s.player] ~= s or s.runId ~= runId or not s.freeActive then
+							return
+						end
+						local bs = getState(s.bot)
+						if not bs or not bs.isPlaying or not bs.isAlive or bs.isFFYL or bs.isStun then
+							return
+						end
+						if math.random() <= CONFIG.FREE_DODGE_CHANCE then
+							if CombatController.performAction(s.bot, "dodge") then
+								BotAnimationService.play(s.bot, "dodge")
+							end
+						end
+					end)
+				end
+			end
 		end
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
+		rematchQueued[player] = nil
 		local s = activeSessions[player]
 		if s then
 			cleanup(s)

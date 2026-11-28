@@ -10,8 +10,14 @@ local TutorialConfig = {
 	NPC_NAME = "Mr. Noob",
 	NPC_ALIASES = { "Mr. Noob", "Sir Nattos" },
 	NPC_DISPLAY_NAME = "Mr. Noob",
-	CONVERSATION_DISTANCE = 14,
+	CONVERSATION_DISTANCE = 8,
 	PROMPT_ACTION_TEXT = "Ngobrol",
+
+	NPC_ANIMATIONS = {
+		hi = "rbxassetid://80472994468003", -- loop default & saat berhenti berbicara
+		beforeIdle = "rbxassetid://82844705302962", -- sekali saat player mulai berbicara
+		idle = "rbxassetid://99282187708889", -- loop setelah BeforeIdle sampai tutorial / selesai
+	},
 
 	-- Pohon percakapan Custom Dialogue Box di Lobby
 	-- speaker: "npc" | "player"

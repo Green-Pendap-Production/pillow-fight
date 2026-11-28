@@ -185,16 +185,21 @@ innerBox.Parent = frame
 addCorner(innerBox, 12)
 addBorderStroke(innerBox, OUTLINE_DARK, 3.5)
 
--- Speaker Pill (menempel di atas-kiri saat Lobby Dialog)
+-- Speaker Pill (menempel di atas-kiri saat Lobby Dialog, simetris horizontal & vertikal)
 local speakerHolder = Instance.new("Frame")
 speakerHolder.Name = "SpeakerPill"
 speakerHolder.AnchorPoint = Vector2.new(0, 0.5)
 speakerHolder.Position = UDim2.fromScale(0.03, 0)
-speakerHolder.Size = UDim2.fromOffset(148, 38)
+speakerHolder.Size = UDim2.fromOffset(0, 38)
 speakerHolder.AutomaticSize = Enum.AutomaticSize.X
 speakerHolder.BackgroundTransparency = 1
 speakerHolder.ZIndex = 6
 speakerHolder.Parent = frame
+
+local speakerSizeLimit = Instance.new("UISizeConstraint")
+speakerSizeLimit.MinSize = Vector2.new(96, 38)
+speakerSizeLimit.MaxSize = Vector2.new(320, 38)
+speakerSizeLimit.Parent = speakerHolder
 
 local speakerScale = Instance.new("UIScale")
 speakerScale.Parent = speakerHolder
@@ -203,7 +208,7 @@ addSolidShadow(speakerHolder, 11, 4, 5)
 
 local speakerBg = Instance.new("Frame")
 speakerBg.Name = "Bg"
-speakerBg.Size = UDim2.fromScale(1, 1)
+speakerBg.Size = UDim2.fromScale(0, 1)
 speakerBg.AutomaticSize = Enum.AutomaticSize.X
 speakerBg.BackgroundColor3 = GOLD_ACCENT
 speakerBg.BorderSizePixel = 0
@@ -213,8 +218,8 @@ addCorner(speakerBg, 11)
 addBorderStroke(speakerBg, OUTLINE_DARK, 4)
 
 local speakerPad = Instance.new("UIPadding")
-speakerPad.PaddingLeft = UDim.new(0, 16)
-speakerPad.PaddingRight = UDim.new(0, 16)
+speakerPad.PaddingLeft = UDim.new(0, 22)
+speakerPad.PaddingRight = UDim.new(0, 22)
 speakerPad.Parent = speakerBg
 
 local speakerLabel = Instance.new("TextLabel")
@@ -224,6 +229,8 @@ speakerLabel.Size = UDim2.fromScale(0, 1)
 speakerLabel.AutomaticSize = Enum.AutomaticSize.X
 speakerLabel.Font = Enum.Font.FredokaOne
 speakerLabel.TextSize = 18
+speakerLabel.TextXAlignment = Enum.TextXAlignment.Center
+speakerLabel.TextYAlignment = Enum.TextYAlignment.Center
 speakerLabel.TextColor3 = OUTLINE_DARK
 speakerLabel.Text = NPC_NAME
 speakerLabel.ZIndex = 7
@@ -515,6 +522,106 @@ local function getControls()
 	return playerControls
 end
 
+local hiddenOtherState: { [Instance]: { prop: string, value: any } } = {}
+local hiddenPlayerConns: { RBXScriptConnection } = {}
+
+local function hideCharacterLocally(char: Model)
+	for _, desc in ipairs(char:GetDescendants()) do
+		if desc:IsA("BasePart") then
+			if not hiddenOtherState[desc] then
+				hiddenOtherState[desc] =
+					{ prop = "part", ltm = desc.LocalTransparencyModifier, shadow = desc.CastShadow }
+			end
+			desc.LocalTransparencyModifier = 1
+			desc.CastShadow = false
+		elseif desc:IsA("Decal") or desc:IsA("Texture") then
+			if not hiddenOtherState[desc] then
+				hiddenOtherState[desc] = { prop = "decal", value = desc.Transparency }
+			end
+			desc.Transparency = 1
+		elseif
+			desc:IsA("BillboardGui")
+			or desc:IsA("SurfaceGui")
+			or desc:IsA("ParticleEmitter")
+			or desc:IsA("Beam")
+			or desc:IsA("Trail")
+			or desc:IsA("Highlight")
+		then
+			if not hiddenOtherState[desc] then
+				hiddenOtherState[desc] = { prop = "enabled", value = (desc :: any).Enabled }
+			end
+			(desc :: any).Enabled = false
+		end
+	end
+end
+
+local function clearHiddenPlayerConns()
+	for _, conn in ipairs(hiddenPlayerConns) do
+		conn:Disconnect()
+	end
+	table.clear(hiddenPlayerConns)
+end
+
+local function restoreHiddenOtherPlayers()
+	clearHiddenPlayerConns()
+	for inst, saved in pairs(hiddenOtherState) do
+		if inst and inst.Parent then
+			if saved.prop == "part" and inst:IsA("BasePart") then
+				inst.LocalTransparencyModifier = saved.ltm
+				inst.CastShadow = saved.shadow
+			elseif saved.prop == "decal" and (inst:IsA("Decal") or inst:IsA("Texture")) then
+				inst.Transparency = saved.value
+			elseif saved.prop == "enabled" then
+				pcall(function()
+					(inst :: any).Enabled = saved.value
+				end)
+			end
+		end
+	end
+	table.clear(hiddenOtherState)
+end
+
+local function setOtherPlayersHidden(hidden: boolean)
+	if not hidden then
+		restoreHiddenOtherPlayers()
+		return
+	end
+
+	clearHiddenPlayerConns()
+
+	local function trackOtherPlayer(other: Player)
+		if other == player then
+			return
+		end
+		if other.Character then
+			hideCharacterLocally(other.Character)
+		end
+		table.insert(
+			hiddenPlayerConns,
+			other.CharacterAdded:Connect(function(newChar)
+				task.defer(function()
+					if inLobbyDialog and newChar.Parent then
+						hideCharacterLocally(newChar)
+					end
+				end)
+			end)
+		)
+	end
+
+	for _, other in ipairs(Players:GetPlayers()) do
+		trackOtherPlayer(other)
+	end
+
+	table.insert(
+		hiddenPlayerConns,
+		Players.PlayerAdded:Connect(function(newPlayer)
+			if inLobbyDialog then
+				trackOtherPlayer(newPlayer)
+			end
+		end)
+	)
+end
+
 local function setMovementLocked(locked: boolean)
 	local controls = getControls()
 	if controls then
@@ -573,6 +680,180 @@ local function getCoachNpcModel(): Model?
 		end
 	end
 	return nil
+end
+
+-- ================================================================
+-- LOBBY NPC ANIMATIONS (HI -> BeforeIdle -> Idle -> HI)
+-- ================================================================
+
+local npcAnimModel: Model? = nil
+local npcAnimTracks: { [string]: AnimationTrack } = {}
+local npcAnimToken = 0
+local npcAnimState = "hi"
+local npcBeforeIdleConn: RBXScriptConnection? = nil
+
+local function clearNpcTracks()
+	if npcBeforeIdleConn then
+		npcBeforeIdleConn:Disconnect()
+		npcBeforeIdleConn = nil
+	end
+	for _, track in pairs(npcAnimTracks) do
+		pcall(function()
+			track:Stop(0)
+		end)
+	end
+	table.clear(npcAnimTracks)
+	npcAnimModel = nil
+end
+
+local function loadNpcTrack(
+	animator: Animator,
+	animId: string?,
+	looped: boolean,
+	priority: Enum.AnimationPriority
+): AnimationTrack?
+	if type(animId) ~= "string" or animId == "" then
+		return nil
+	end
+	local anim = Instance.new("Animation")
+	anim.AnimationId = animId
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(anim)
+	end)
+	anim:Destroy()
+	if not ok or not track then
+		return nil
+	end
+	track.Looped = looped
+	track.Priority = priority
+	return track
+end
+
+local function ensureNpcTracks(): boolean
+	local npc = getCoachNpcModel()
+	if not npc then
+		return false
+	end
+	if npcAnimModel == npc and next(npcAnimTracks) ~= nil then
+		return true
+	end
+
+	clearNpcTracks()
+
+	local hum = npc:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return false
+	end
+
+	-- Hapus Animate bawaan jika masih tersisa di client agar tidak menimpa pose custom
+	local defaultAnimate = npc:FindFirstChild("Animate")
+	if defaultAnimate and defaultAnimate:IsA("LocalScript") then
+		defaultAnimate.Disabled = true
+	end
+
+	local animator = hum:FindFirstChildOfClass("Animator") or hum:WaitForChild("Animator", 2)
+	if not animator or not animator:IsA("Animator") then
+		local created = Instance.new("Animator")
+		created.Parent = hum
+		animator = created
+	end
+
+	local animIds = TutorialConfig.NPC_ANIMATIONS
+	if type(animIds) ~= "table" then
+		return false
+	end
+
+	npcAnimModel = npc
+	local hiTrack = loadNpcTrack(animator :: Animator, animIds.hi, true, Enum.AnimationPriority.Action)
+	local beforeIdleTrack =
+		loadNpcTrack(animator :: Animator, animIds.beforeIdle, false, Enum.AnimationPriority.Action2)
+	local idleTrack = loadNpcTrack(animator :: Animator, animIds.idle, true, Enum.AnimationPriority.Action)
+
+	if hiTrack then
+		npcAnimTracks.hi = hiTrack
+	end
+	if beforeIdleTrack then
+		npcAnimTracks.beforeIdle = beforeIdleTrack
+	end
+	if idleTrack then
+		npcAnimTracks.idle = idleTrack
+	end
+
+	return next(npcAnimTracks) ~= nil
+end
+
+local function playNpcHi()
+	npcAnimState = "hi"
+	npcAnimToken += 1
+	if npcBeforeIdleConn then
+		npcBeforeIdleConn:Disconnect()
+		npcBeforeIdleConn = nil
+	end
+	if not ensureNpcTracks() then
+		return
+	end
+
+	if npcAnimTracks.beforeIdle and npcAnimTracks.beforeIdle.IsPlaying then
+		npcAnimTracks.beforeIdle:Stop(0.15)
+	end
+	if npcAnimTracks.idle and npcAnimTracks.idle.IsPlaying then
+		npcAnimTracks.idle:Stop(0.15)
+	end
+	if npcAnimTracks.hi and not npcAnimTracks.hi.IsPlaying then
+		npcAnimTracks.hi:Play(0.15)
+	end
+end
+
+local function playNpcTalkSequence()
+	npcAnimState = "dialog"
+	npcAnimToken += 1
+	local myToken = npcAnimToken
+	if npcBeforeIdleConn then
+		npcBeforeIdleConn:Disconnect()
+		npcBeforeIdleConn = nil
+	end
+	if not ensureNpcTracks() then
+		return
+	end
+
+	if npcAnimTracks.hi and npcAnimTracks.hi.IsPlaying then
+		npcAnimTracks.hi:Stop(0.15)
+	end
+	if npcAnimTracks.idle and npcAnimTracks.idle.IsPlaying then
+		npcAnimTracks.idle:Stop(0.12)
+	end
+
+	local beforeIdle = npcAnimTracks.beforeIdle
+	local idle = npcAnimTracks.idle
+	if beforeIdle then
+		beforeIdle:Stop(0)
+		beforeIdle:Play(0.12)
+
+		local transitioned = false
+		local function startIdleAfterTransition()
+			if transitioned then
+				return
+			end
+			transitioned = true
+			if npcAnimToken ~= myToken or npcAnimState ~= "dialog" then
+				return
+			end
+			if beforeIdle.IsPlaying then
+				beforeIdle:Stop(0.15)
+			end
+			if idle and not idle.IsPlaying then
+				idle:Play(0.15)
+			end
+		end
+
+		npcBeforeIdleConn = beforeIdle.Stopped:Once(startIdleAfterTransition)
+		-- Fallback jika asset BeforeIdle belum sempat stream atau Length == 0
+		if not beforeIdle.IsPlaying then
+			startIdleAfterTransition()
+		end
+	elseif idle and not idle.IsPlaying then
+		idle:Play(0.15)
+	end
 end
 
 local function facePlayerTowardNpc()
@@ -1133,6 +1414,8 @@ local function closeLobbyDialog(triggerAction: string?)
 
 	restoreCamera()
 	setMovementLocked(false)
+	setOtherPlayersHidden(false)
+	playNpcHi()
 
 	if triggerAction == "startTutorial" then
 		promptEvent:FireServer("startTutorial")
@@ -1314,7 +1597,9 @@ local function openLobbyDialog()
 	inLobbyDialog = true
 	lobbySessionToken += 1
 	setMovementLocked(true)
+	setOtherPlayersHidden(true)
 	facePlayerTowardNpc()
+	playNpcTalkSequence()
 	showLobbyNode("start")
 end
 
@@ -1568,4 +1853,27 @@ promptEvent.OnClientEvent:Connect(function(kind, data)
 	elseif kind == "fx" then
 		playFx(data)
 	end
+end)
+
+-- Mulai loop animasi HI di NPC lobby begitu modelnya tersedia
+task.spawn(function()
+	if getCoachNpcModel() then
+		if not inLobbyDialog then
+			playNpcHi()
+		end
+		return
+	end
+
+	local conn: RBXScriptConnection? = nil
+	conn = workspace.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("Model") and getCoachNpcModel() == descendant then
+			if conn then
+				conn:Disconnect()
+				conn = nil
+			end
+			if not inLobbyDialog then
+				playNpcHi()
+			end
+		end
+	end)
 end)
