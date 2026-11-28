@@ -17,6 +17,17 @@ EmojiConfig.FAN_SPREAD_DEG = 156 -- total sudut kipas menghadap ke kiri (derajat
 EmojiConfig.CANCEL_RADIUS = 30 -- jarak dari pusat untuk batal/cancel
 EmojiConfig.TAB_DEADZONE = 18 -- jarak gerak mouse minimal saat hold Tab
 
+-- Suara emoji (field `sound` per emoji di bawah, opsional -- emoji tanpa
+-- `sound` tetap tampil, cuma tanpa bunyi). Diputar 3D dari kepala pengirim,
+-- jadi pemain lain di dekatnya ikut dengar. Jarak rolloff disamakan dengan
+-- BillboardGui.MaxDistance (85) supaya bunyi hilang di jarak yang sama
+-- dengan gelembung emojinya.
+EmojiConfig.SOUND = {
+	VOLUME = 1,
+	ROLLOFF_MIN_DISTANCE = 12,
+	ROLLOFF_MAX_DISTANCE = 85,
+}
+
 EmojiConfig.EMOJIS = {
 	{
 		id = "cry",
@@ -26,6 +37,7 @@ EmojiConfig.EMOJIS = {
 		bottomColor = Color3.fromRGB(60, 115, 215),
 		rimColor = Color3.fromRGB(28, 48, 105),
 		image = "rbxassetid://120991223819434",
+		sound = "rbxassetid://117951745739942", -- cry_emoji.mp3 (level disamakan -5.4 dB)
 	},
 	{
 		id = "doomed",
@@ -44,6 +56,7 @@ EmojiConfig.EMOJIS = {
 		bottomColor = Color3.fromRGB(240, 165, 25),
 		rimColor = Color3.fromRGB(115, 65, 10),
 		image = "rbxassetid://132419403022486",
+		sound = "rbxassetid://87852299158768", -- smug.mp3
 	},
 	{
 		id = "olok",

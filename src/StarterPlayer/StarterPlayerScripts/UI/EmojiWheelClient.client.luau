@@ -15,6 +15,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -518,6 +519,46 @@ end)
 -- ================================================================
 -- OVERHEAD WORLD DISPLAY
 -- ================================================================
+local EMOJI_SOUND = EmojiConfig.SOUND or {}
+
+-- Bunyi emoji, 3D dari kepala pengirim. Sound dibuat per pemutaran lalu
+-- dibuang setelah selesai -- emoji dibatasi cooldown, jadi tidak menumpuk.
+-- Ikut master SFX (attribute SFXVolume di SoundService) seperti
+-- SoundController, supaya slider volume SFX juga mengecilkan emoji.
+local function playEmojiSound(adornee, emoji)
+	if type(emoji.sound) ~= "string" or emoji.sound == "" then
+		return
+	end
+
+	local sfxMaster = SoundService:GetAttribute("SFXVolume")
+	local sfxMult = if type(sfxMaster) == "number" then math.clamp(sfxMaster, 0, 1) else 1
+	if sfxMult <= 0 then
+		return
+	end
+
+	local sound = Instance.new("Sound")
+	sound.Name = "EmojiSound"
+	sound.SoundId = emoji.sound
+	sound.Volume = (EMOJI_SOUND.VOLUME or 1) * sfxMult
+	sound.RollOffMode = Enum.RollOffMode.InverseTapered
+	sound.RollOffMinDistance = EMOJI_SOUND.ROLLOFF_MIN_DISTANCE or 12
+	sound.RollOffMaxDistance = EMOJI_SOUND.ROLLOFF_MAX_DISTANCE or 85
+	sound.Parent = adornee
+
+	sound.Ended:Once(function()
+		sound:Destroy()
+	end)
+	-- Jaring pengaman kalau Ended tidak pernah datang (asset gagal load /
+	-- masih dimoderasi): jangan biarkan Sound menumpuk di kepala karakter.
+	task.delay(5, function()
+		if sound.Parent then
+			sound:Destroy()
+		end
+	end)
+
+	sound:Play()
+end
+
 local function showOverheadEmoji(sender, emoji)
 	if not sender or not sender.Character then
 		return
@@ -540,6 +581,8 @@ local function showOverheadEmoji(sender, emoji)
 	billboard.AlwaysOnTop = true
 	billboard.MaxDistance = 85
 	billboard.Parent = adornee
+
+	playEmojiSound(adornee, emoji)
 
 	local container = Instance.new("Frame")
 	container.AnchorPoint = Vector2.new(0.5, 0.5)
